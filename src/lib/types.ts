@@ -21,7 +21,9 @@ export interface Cuenta {
   /** Solo tiene sentido cuando tipo === "otra": nombre libre elegido por el usuario. */
   tipoPersonalizado: string | null;
   moneda: string; // ej: ARS, USD, EUR
-  usuarioResponsableId: string | null; // quién "tiene" la cuenta / es responsable
+  /** Quiénes son responsables de la cuenta (pueden cargarle movimientos).
+   *  Vacío = sin responsables asignados (solo un admin puede operarla). */
+  usuarioResponsablesIds: string[];
   saldoInicial: number;
   activa: boolean;
   creadoEn: string;

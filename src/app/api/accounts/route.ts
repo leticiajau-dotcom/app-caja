@@ -10,7 +10,7 @@ const CrearCuentaSchema = z.object({
   tipo: z.enum(["efectivo", "banco", "billetera_virtual", "otra"]),
   tipoPersonalizado: z.string().nullable().optional(),
   moneda: z.string().min(1).default("ARS"),
-  usuarioResponsableId: z.string().nullable().optional(),
+  usuarioResponsablesIds: z.array(z.string()).default([]),
   saldoInicial: z.number().default(0),
 });
 
@@ -29,10 +29,7 @@ export async function POST(req: Request) {
     await requerirSesion();
     const body = await req.json();
     const datos = CrearCuentaSchema.parse(body);
-    const cuenta = await crearCuenta({
-      ...datos,
-      usuarioResponsableId: datos.usuarioResponsableId ?? null,
-    });
+    const cuenta = await crearCuenta(datos);
     return NextResponse.json({ cuenta });
   } catch (err) {
     return manejarError(err);

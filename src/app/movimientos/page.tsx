@@ -57,7 +57,7 @@ export default function MovimientosPage() {
       const operables =
         sesionActual.rol === "admin"
           ? activas
-          : activas.filter((c: Cuenta) => c.usuarioResponsableId === sesionActual.usuarioId);
+          : activas.filter((c: Cuenta) => c.usuarioResponsablesIds.includes(sesionActual.usuarioId));
       if (operables.length > 0) setCuentaId(operables[0].id);
     }
     setCargando(false);
@@ -85,7 +85,7 @@ export default function MovimientosPage() {
   const cuentasOperables = useMemo(() => {
     if (!sesion) return [];
     if (sesion.rol === "admin") return cuentas;
-    return cuentas.filter((c) => c.usuarioResponsableId === sesion.usuarioId);
+    return cuentas.filter((c) => c.usuarioResponsablesIds.includes(sesion.usuarioId));
   }, [cuentas, sesion]);
 
   // La cuenta destino de una transferencia solo puede ser de la misma

@@ -78,7 +78,7 @@ export const HEADERS = {
     "tipo",
     "tipoPersonalizado",
     "moneda",
-    "usuarioResponsableId",
+    "usuarioResponsablesIds",
     "saldoInicial",
     "activa",
     "creadoEn",

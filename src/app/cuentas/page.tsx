@@ -17,10 +17,46 @@ interface UsuarioPublico {
 
 const MONEDA_OTRA = "__otra__";
 
+function ResponsablesCheckboxes({
+  usuarios,
+  seleccionados,
+  onChange,
+}: {
+  usuarios: UsuarioPublico[];
+  seleccionados: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  function alternar(id: string) {
+    onChange(
+      seleccionados.includes(id)
+        ? seleccionados.filter((x) => x !== id)
+        : [...seleccionados, id]
+    );
+  }
+  if (usuarios.length === 0) {
+    return <p className="text-xs text-madera-400">No hay usuarios cargados todavía.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-3">
+      {usuarios.map((u) => (
+        <label key={u.id} className="flex items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={seleccionados.includes(u.id)}
+            onChange={() => alternar(u.id)}
+          />
+          {u.nombre}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export default function CuentasPage() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioPublico[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [esAdmin, setEsAdmin] = useState(false);
   const [error, setError] = useState("");
 
   const [nombre, setNombre] = useState("");
@@ -28,20 +64,27 @@ export default function CuentasPage() {
   const [tipoPersonalizado, setTipoPersonalizado] = useState("");
   const [monedaSeleccion, setMonedaSeleccion] = useState("ARS");
   const [monedaLibre, setMonedaLibre] = useState("");
-  const [responsable, setResponsable] = useState("");
+  const [responsables, setResponsables] = useState<string[]>([]);
   const [saldoInicial, setSaldoInicial] = useState(0);
   const [guardando, setGuardando] = useState(false);
 
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [responsablesEdicion, setResponsablesEdicion] = useState<string[]>([]);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   async function cargar() {
     setCargando(true);
-    const [rc, ru] = await Promise.all([
+    const [rc, ru, rs] = await Promise.all([
       fetch("/api/accounts"),
       fetch("/api/users/public"),
+      fetch("/api/session"),
     ]);
     const dc = await rc.json();
     const du = await ru.json();
+    const ds = await rs.json();
     setCuentas(dc.cuentas ?? []);
     setUsuarios(du.usuarios ?? []);
+    setEsAdmin(ds.sesion?.rol === "admin");
     setCargando(false);
   }
 
@@ -67,7 +110,7 @@ export default function CuentasPage() {
           tipo,
           tipoPersonalizado: tipo === "otra" ? tipoPersonalizado : null,
           moneda,
-          usuarioResponsableId: responsable || null,
+          usuarioResponsablesIds: responsables,
           saldoInicial,
         }),
       });
@@ -75,6 +118,7 @@ export default function CuentasPage() {
       if (!res.ok) throw new Error(data.error);
       setNombre("");
       setTipoPersonalizado("");
+      setResponsables([]);
       setSaldoInicial(0);
       await cargar();
     } catch (e: any) {
@@ -91,6 +135,26 @@ export default function CuentasPage() {
       body: JSON.stringify({ activa: !cuenta.activa }),
     });
     await cargar();
+  }
+
+  function empezarEdicion(cuenta: Cuenta) {
+    setEditandoId(cuenta.id);
+    setResponsablesEdicion(cuenta.usuarioResponsablesIds);
+  }
+
+  async function guardarResponsables(cuentaId: string) {
+    setGuardandoEdicion(true);
+    try {
+      await fetch(`/api/accounts/${cuentaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioResponsablesIds: responsablesEdicion }),
+      });
+      setEditandoId(null);
+      await cargar();
+    } finally {
+      setGuardandoEdicion(false);
+    }
   }
 
   return (
@@ -170,20 +234,19 @@ export default function CuentasPage() {
               />
             </div>
           )}
-          <div>
-            <label className="label">Responsable</label>
-            <select
-              className="input"
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-            >
-              <option value="">Sin asignar</option>
-              {usuarios.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nombre}
-                </option>
-              ))}
-            </select>
+          <div className="sm:col-span-2">
+            <label className="label">
+              Responsables (pueden cargarle movimientos a esta cuenta)
+            </label>
+            <ResponsablesCheckboxes
+              usuarios={usuarios}
+              seleccionados={responsables}
+              onChange={setResponsables}
+            />
+            <p className="text-xs text-madera-400 mt-1">
+              Si no marcás a nadie, la cuenta queda reservada solo para
+              administradores.
+            </p>
           </div>
           <div>
             <label className="label">Saldo inicial</label>
@@ -209,7 +272,7 @@ export default function CuentasPage() {
                 <th className="py-2 pr-4">Nombre</th>
                 <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4">Moneda</th>
-                <th className="py-2 pr-4">Responsable</th>
+                <th className="py-2 pr-4">Responsables</th>
                 <th className="py-2 pr-4 text-right">Saldo inicial</th>
                 <th className="py-2 pr-4">Estado</th>
                 <th className="py-2 pr-4"></th>
@@ -217,15 +280,61 @@ export default function CuentasPage() {
             </thead>
             <tbody>
               {cuentas.map((c) => (
-                <tr key={c.id} className="border-b border-madera-50 last:border-0">
+                <tr key={c.id} className="border-b border-madera-50 last:border-0 align-top">
                   <td className="py-2 pr-4">{c.nombre}</td>
                   <td className="py-2 pr-4">{tipoCuentaLabel(c)}</td>
                   <td className="py-2 pr-4">{c.moneda}</td>
-                  <td className="py-2 pr-4">
-                    {usuarios.find((u) => u.id === c.usuarioResponsableId)
-                      ?.nombre ?? "—"}
+                  <td className="py-2 pr-4 min-w-[220px]">
+                    {editandoId === c.id ? (
+                      <div className="space-y-2">
+                        <ResponsablesCheckboxes
+                          usuarios={usuarios}
+                          seleccionados={responsablesEdicion}
+                          onChange={setResponsablesEdicion}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn-primary py-1 px-2 text-xs"
+                            disabled={guardandoEdicion}
+                            onClick={() => guardarResponsables(c.id)}
+                          >
+                            {guardandoEdicion ? "Guardando..." : "Guardar"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary py-1 px-2 text-xs"
+                            onClick={() => setEditandoId(null)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>
+                          {c.usuarioResponsablesIds.length === 0
+                            ? "— (solo admin)"
+                            : c.usuarioResponsablesIds
+                                .map(
+                                  (id) =>
+                                    usuarios.find((u) => u.id === id)?.nombre ?? "?"
+                                )
+                                .join(", ")}
+                        </span>
+                        {esAdmin && (
+                          <button
+                            type="button"
+                            className="text-xs text-madera-500 hover:text-madera-700 underline shrink-0"
+                            onClick={() => empezarEdicion(c)}
+                          >
+                            editar
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
-                  <td className="py-2 pr-4 text-right">
+                  <td className="py-2 pr-4 text-right whitespace-nowrap">
                     {formatMoney(c.saldoInicial, c.moneda)}
                   </td>
                   <td className="py-2 pr-4">
@@ -236,12 +345,14 @@ export default function CuentasPage() {
                     )}
                   </td>
                   <td className="py-2 pr-4">
-                    <button
-                      className="btn-secondary py-1 px-2 text-xs"
-                      onClick={() => alternarActiva(c)}
-                    >
-                      {c.activa ? "Desactivar" : "Activar"}
-                    </button>
+                    {esAdmin && (
+                      <button
+                        className="btn-secondary py-1 px-2 text-xs whitespace-nowrap"
+                        onClick={() => alternarActiva(c)}
+                      >
+                        {c.activa ? "Desactivar" : "Activar"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

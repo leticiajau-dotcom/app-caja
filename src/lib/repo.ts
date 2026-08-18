@@ -131,7 +131,10 @@ function rowToCuenta(r: Record<string, string>): Cuenta {
     tipo: (r.tipo as TipoCuenta) || "otra",
     tipoPersonalizado: r.tipoPersonalizado || null,
     moneda: r.moneda || "ARS",
-    usuarioResponsableId: r.usuarioResponsableId || null,
+    usuarioResponsablesIds: (r.usuarioResponsablesIds || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     saldoInicial: toNum(r.saldoInicial),
     activa: toBool(r.activa),
     creadoEn: r.creadoEn,
@@ -149,7 +152,7 @@ export async function crearCuenta(datos: {
   tipo: TipoCuenta;
   tipoPersonalizado?: string | null;
   moneda: string;
-  usuarioResponsableId: string | null;
+  usuarioResponsablesIds: string[];
   saldoInicial: number;
 }): Promise<Cuenta> {
   const cuenta: Cuenta = {
@@ -159,7 +162,7 @@ export async function crearCuenta(datos: {
     tipoPersonalizado:
       datos.tipo === "otra" ? (datos.tipoPersonalizado?.trim() || null) : null,
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
-    usuarioResponsableId: datos.usuarioResponsableId,
+    usuarioResponsablesIds: datos.usuarioResponsablesIds,
     saldoInicial: datos.saldoInicial || 0,
     activa: true,
     creadoEn: new Date().toISOString(),
@@ -170,7 +173,7 @@ export async function crearCuenta(datos: {
     cuenta.tipo,
     cuenta.tipoPersonalizado ?? "",
     cuenta.moneda,
-    cuenta.usuarioResponsableId ?? "",
+    cuenta.usuarioResponsablesIds.join(","),
     cuenta.saldoInicial,
     String(cuenta.activa),
     cuenta.creadoEn,
@@ -187,7 +190,7 @@ export async function actualizarCuenta(
       | "tipo"
       | "tipoPersonalizado"
       | "moneda"
-      | "usuarioResponsableId"
+      | "usuarioResponsablesIds"
       | "activa"
     >
   >
@@ -202,7 +205,7 @@ export async function actualizarCuenta(
     actualizada.tipo,
     actualizada.tipoPersonalizado ?? "",
     actualizada.moneda,
-    actualizada.usuarioResponsableId ?? "",
+    actualizada.usuarioResponsablesIds.join(","),
     actualizada.saldoInicial,
     String(actualizada.activa),
     actualizada.creadoEn,
@@ -211,8 +214,8 @@ export async function actualizarCuenta(
 }
 
 /** Un admin puede cargar movimientos en cualquier cuenta. Un empleado solo
- *  en las cuentas de las que él mismo es responsable — ni en las de otro
- *  responsable, ni en las que no tienen responsable asignado (esas quedan
+ *  en las cuentas de las que él es uno de los responsables — ni en las de
+ *  otro responsable, ni en las que no tienen ninguno asignado (esas quedan
  *  reservadas para un admin, hasta que se les asigne alguien). */
 export async function usuarioPuedeOperarCuenta(
   sesion: { usuarioId: string; rol: Rol },
@@ -221,7 +224,7 @@ export async function usuarioPuedeOperarCuenta(
   if (sesion.rol === "admin") return true;
   const cuentas = await listarCuentas();
   const cuenta = cuentas.find((c) => c.id === cuentaId);
-  return Boolean(cuenta && cuenta.usuarioResponsableId === sesion.usuarioId);
+  return Boolean(cuenta?.usuarioResponsablesIds.includes(sesion.usuarioId));
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +446,7 @@ export function calcularSaldosPorUsuario(
   return usuarios.map((usuario) => {
     const porMoneda: Record<string, number> = {};
     for (const { cuenta, saldo } of saldosPorCuenta) {
-      if (cuenta.usuarioResponsableId === usuario.id) {
+      if (cuenta.usuarioResponsablesIds.includes(usuario.id)) {
         porMoneda[cuenta.moneda] = (porMoneda[cuenta.moneda] ?? 0) + saldo;
       }
     }
