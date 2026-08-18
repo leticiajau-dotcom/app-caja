@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { manejarError, requerirSesion } from "@/lib/guards";
+import { manejarError, requerirAdmin, requerirSesion } from "@/lib/guards";
 import { crearCuenta, listarCuentas } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +24,10 @@ export async function GET() {
   }
 }
 
+// Solo un admin crea cuentas nuevas.
 export async function POST(req: Request) {
   try {
-    const sesion = await requerirSesion();
+    const sesion = await requerirAdmin();
     const body = await req.json();
     const datos = CrearCuentaSchema.parse(body);
     const cuenta = await crearCuenta({ ...datos, usuarioId: sesion.usuarioId });

@@ -54,10 +54,9 @@ export default function MovimientosPage() {
     setMovimientos(dm.movimientos ?? []);
     setSesion(sesionActual);
     if (!cuentaId && sesionActual) {
-      const operables =
-        sesionActual.rol === "admin"
-          ? activas
-          : activas.filter((c: Cuenta) => c.usuarioResponsablesIds.includes(sesionActual.usuarioId));
+      const operables = activas.filter((c: Cuenta) =>
+        c.usuarioResponsablesIds.includes(sesionActual.usuarioId)
+      );
       if (operables.length > 0) setCuentaId(operables[0].id);
     }
     setCargando(false);
@@ -80,11 +79,10 @@ export default function MovimientosPage() {
     return m;
   }, [usuarios]);
 
-  // Un admin puede cargar movimientos en cualquier cuenta. Un empleado solo
-  // en las cuentas de las que él mismo es responsable.
+  // Para cargar un movimiento hay que ser responsable de esa cuenta —
+  // incluido el admin, que solo gestiona la creación y los responsables.
   const cuentasOperables = useMemo(() => {
     if (!sesion) return [];
-    if (sesion.rol === "admin") return cuentas;
     return cuentas.filter((c) => c.usuarioResponsablesIds.includes(sesion.usuarioId));
   }, [cuentas, sesion]);
 
@@ -217,8 +215,9 @@ export default function MovimientosPage() {
             </select>
             {!cargando && cuentasOperables.length === 0 && (
               <p className="text-xs text-red-500 mt-1">
-                No sos responsable de ninguna cuenta todavía. Pedile a un
-                administrador que te asigne una en "Cuentas".
+                {sesion?.rol === "admin"
+                  ? 'No sos responsable de ninguna cuenta todavía. Asignate una desde "Cuentas".'
+                  : 'No sos responsable de ninguna cuenta todavía. Pedile a un administrador que te asigne una en "Cuentas".'}
               </p>
             )}
           </div>

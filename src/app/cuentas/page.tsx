@@ -162,11 +162,13 @@ export default function CuentasPage() {
       <div>
         <h1 className="text-2xl font-bold text-madera-800">Cuentas</h1>
         <p className="text-madera-600">
-          Efectivo, bancos, billeteras virtuales, cuentas en otras monedas...
-          Creá las que necesites.
+          {esAdmin
+            ? "Efectivo, bancos, billeteras virtuales, cuentas en otras monedas... Creá las que necesites."
+            : "Solo un administrador puede crear cuentas o asignar responsables."}
         </p>
       </div>
 
+      {esAdmin && (
       <div className="card">
         <h2 className="font-semibold text-lg mb-4">Nueva cuenta</h2>
         <form onSubmit={crear} className="grid gap-3 sm:grid-cols-2">
@@ -244,8 +246,8 @@ export default function CuentasPage() {
               onChange={setResponsables}
             />
             <p className="text-xs text-madera-400 mt-1">
-              Si no marcás a nadie, la cuenta queda reservada solo para
-              administradores.
+              Si no marcás a nadie, nadie va a poder cargarle movimientos
+              hasta que le asignes un responsable.
             </p>
           </div>
           <div>
@@ -260,6 +262,7 @@ export default function CuentasPage() {
           </div>
         </form>
       </div>
+      )}
 
       <div className="card overflow-x-auto">
         <h2 className="font-semibold text-lg mb-4">Todas las cuentas</h2>
