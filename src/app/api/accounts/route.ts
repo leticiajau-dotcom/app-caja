@@ -26,10 +26,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await requerirSesion();
+    const sesion = await requerirSesion();
     const body = await req.json();
     const datos = CrearCuentaSchema.parse(body);
-    const cuenta = await crearCuenta(datos);
+    const cuenta = await crearCuenta({ ...datos, usuarioId: sesion.usuarioId });
     return NextResponse.json({ cuenta });
   } catch (err) {
     return manejarError(err);

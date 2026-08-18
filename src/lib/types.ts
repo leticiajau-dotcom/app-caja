@@ -52,6 +52,10 @@ export interface Movimiento {
   notaAnulacion: string | null;
   /** Si este movimiento es la corrección de otro, acá va el id del movimiento anulado que reemplaza. */
   movimientoOrigenId: string | null;
+  /** Registro del saldo inicial cargado al crear la cuenta: queda visible en
+   *  el historial para trazabilidad, pero no se vuelve a sumar al saldo
+   *  (ese importe ya se cuenta a través de Cuenta.saldoInicial). */
+  esAperturaSaldo: boolean;
 }
 
 export interface SaldoCuenta {

@@ -154,6 +154,9 @@ export async function crearCuenta(datos: {
   moneda: string;
   usuarioResponsablesIds: string[];
   saldoInicial: number;
+  /** Quién la está creando: si hay saldo inicial, queda registrado como el
+   *  usuario que cargó el movimiento de apertura. */
+  usuarioId: string;
 }): Promise<Cuenta> {
   const cuenta: Cuenta = {
     id: randomUUID(),
@@ -178,6 +181,22 @@ export async function crearCuenta(datos: {
     String(cuenta.activa),
     cuenta.creadoEn,
   ]);
+
+  // Dejamos registrado el saldo inicial como movimiento, para que quede en
+  // el historial (no afecta el saldo: ver esAperturaSaldo en el cálculo).
+  if (cuenta.saldoInicial !== 0) {
+    await crearMovimiento({
+      fecha: cuenta.creadoEn.slice(0, 10),
+      tipo: cuenta.saldoInicial > 0 ? "ingreso" : "egreso",
+      cuentaId: cuenta.id,
+      monto: Math.abs(cuenta.saldoInicial),
+      categoria: "Saldo inicial",
+      descripcion: "Apertura de la cuenta",
+      usuarioId: datos.usuarioId,
+      esAperturaSaldo: true,
+    });
+  }
+
   return cuenta;
 }
 
@@ -248,6 +267,7 @@ function rowToMovimiento(r: Record<string, string>): Movimiento {
     anuladoEn: r.anuladoEn || null,
     notaAnulacion: r.notaAnulacion || null,
     movimientoOrigenId: r.movimientoOrigenId || null,
+    esAperturaSaldo: toBool(r.esAperturaSaldo),
   };
 }
 
@@ -268,6 +288,7 @@ function movimientoAFila(m: Movimiento): (string | number)[] {
     m.anuladoEn ?? "",
     m.notaAnulacion ?? "",
     m.movimientoOrigenId ?? "",
+    String(m.esAperturaSaldo),
   ];
 }
 
@@ -306,6 +327,7 @@ export async function crearMovimiento(datos: {
   descripcion: string;
   usuarioId: string;
   movimientoOrigenId?: string | null;
+  esAperturaSaldo?: boolean;
 }): Promise<Movimiento> {
   if (datos.monto <= 0) {
     throw new Error("El monto debe ser mayor a cero.");
@@ -345,6 +367,7 @@ export async function crearMovimiento(datos: {
     anuladoEn: null,
     notaAnulacion: null,
     movimientoOrigenId: datos.movimientoOrigenId ?? null,
+    esAperturaSaldo: datos.esAperturaSaldo ?? false,
   };
   const tabDestino = await obtenerPestañaMovimientosParaEscribir();
   await agregarFila(tabDestino, movimientoAFila(movimiento));
@@ -419,7 +442,9 @@ export function calcularSaldosPorCuenta(
   for (const c of cuentas) saldos.set(c.id, c.saldoInicial);
 
   for (const m of movimientos) {
-    if (m.anulado) continue;
+    // El de apertura es solo un registro visible en el historial: el
+    // importe ya está contado en el saldo inicial de la cuenta.
+    if (m.anulado || m.esAperturaSaldo) continue;
     if (m.tipo === "ingreso") {
       saldos.set(m.cuentaId, (saldos.get(m.cuentaId) ?? 0) + m.monto);
     } else if (m.tipo === "egreso") {

@@ -138,7 +138,9 @@ export default function MovimientosPage() {
   }
 
   function puedeRectificar(m: Movimiento) {
-    if (!sesion || m.anulado) return false;
+    // El de apertura no se rectifica por acá: es un reflejo del saldo
+    // inicial de la cuenta, no un movimiento suelto.
+    if (!sesion || m.anulado || m.esAperturaSaldo) return false;
     return sesion.rol === "admin" || m.usuarioId === sesion.usuarioId;
   }
 
@@ -321,7 +323,14 @@ export default function MovimientosPage() {
                     <td className="py-2 pr-4 whitespace-nowrap">
                       {formatFecha(m.fecha)}
                     </td>
-                    <td className="py-2 pr-4 capitalize">{m.tipo}</td>
+                    <td className="py-2 pr-4 capitalize">
+                      {m.tipo}
+                      {m.esAperturaSaldo && (
+                        <span className="ml-1 text-xs text-madera-400 normal-case">
+                          (apertura)
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-4">
                       {cuenta?.nombre ?? "—"}
                       {destino && ` → ${destino.nombre}`}
