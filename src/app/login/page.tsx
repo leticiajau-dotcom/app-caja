@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import type { Configuracion } from "@/lib/types";
 
 interface UsuarioPublico {
   id: string;
@@ -22,6 +23,7 @@ function LoginForm() {
   const esBootstrap = params.get("bootstrap") === "1";
 
   const [usuarios, setUsuarios] = useState<UsuarioPublico[]>([]);
+  const [config, setConfig] = useState<Configuracion | null>(null);
   const [nombre, setNombre] = useState("");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -33,6 +35,10 @@ function LoginForm() {
       .then((r) => r.json())
       .then((d) => setUsuarios(d.usuarios ?? []))
       .catch(() => setUsuarios([]));
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setConfig(d.config ?? null))
+      .catch(() => setConfig(null));
   }, []);
 
   async function crearPrimerAdmin(e: React.FormEvent) {
@@ -140,8 +146,18 @@ function LoginForm() {
   return (
     <div className="max-w-md mx-auto mt-10">
       <div className="card space-y-4">
-        <h1 className="text-xl font-bold text-madera-800">
-          🪵 Caja Carpintería
+        <h1 className="text-xl font-bold text-madera-800 flex items-center gap-2">
+          {config?.logoDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={config.logoDataUri}
+              alt=""
+              className="h-7 w-7 rounded object-contain"
+            />
+          ) : (
+            <span>🪵</span>
+          )}
+          {config?.nombreApp ?? "Caja Negocio"}
         </h1>
         <form onSubmit={onSubmitLogin} className="space-y-3">
           <div>

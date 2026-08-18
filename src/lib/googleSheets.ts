@@ -67,6 +67,7 @@ export const TABS = {
   USUARIOS: "Usuarios",
   CUENTAS: "Cuentas",
   MOVIMIENTOS: "Movimientos",
+  CONFIGURACION: "Configuracion",
 } as const;
 
 export const HEADERS = {
@@ -75,6 +76,7 @@ export const HEADERS = {
     "id",
     "nombre",
     "tipo",
+    "tipoPersonalizado",
     "moneda",
     "usuarioResponsableId",
     "saldoInicial",
@@ -92,14 +94,39 @@ export const HEADERS = {
     "descripcion",
     "usuarioId",
     "creadoEn",
+    "anulado",
+    "anuladoPorId",
+    "anuladoEn",
+    "notaAnulacion",
+    "movimientoOrigenId",
   ],
+  [TABS.CONFIGURACION]: ["clave", "valor"],
 } as const;
+
+/** Cuántas filas de datos toleramos en una pestaña de Movimientos antes de
+ *  rotar a una nueva ("Movimientos_2", "Movimientos_3", ...) para que la
+ *  app siga funcionando sin cortes ni lecturas cada vez más lentas. Google
+ *  Sheets soporta hasta ~10 millones de celdas por planilla; con nuestras
+ *  15 columnas eso son ~650.000 filas por pestaña, así que este umbral deja
+ *  mucho margen y además mantiene las lecturas rápidas. */
+const UMBRAL_FILAS_MOVIMIENTOS = 200_000;
+
+function headersDeTab(tab: string): readonly string[] {
+  if (tab === TABS.MOVIMIENTOS || tab.startsWith(`${TABS.MOVIMIENTOS}_`)) {
+    return HEADERS[TABS.MOVIMIENTOS];
+  }
+  const headers = HEADERS[tab as keyof typeof HEADERS];
+  if (!headers) {
+    throw new Error(`No se conocen los encabezados de la pestaña "${tab}".`);
+  }
+  return headers;
+}
 
 /** Crea (si no existe) la planilla con las pestañas y encabezados necesarios.
  *  Devuelve el spreadsheetId. Este id hay que guardarlo en la variable de
  *  entorno GOOGLE_SHEET_ID. */
 export async function crearPlanillaSiNoExiste(
-  nombre = "Caja Carpintería",
+  nombre = "Caja Negocio",
   refreshTokenOverride?: string
 ) {
   const sheets = getSheetsClient(refreshTokenOverride);
@@ -171,7 +198,7 @@ export async function leerFilas<T extends Record<string, string>>(
     range: `${tab}!A2:Z`,
   });
   const rows = res.data.values ?? [];
-  const headers = HEADERS[tab as keyof typeof HEADERS] as unknown as string[];
+  const headers = headersDeTab(tab);
   return rows
     .filter((row) => row.some((cell) => cell !== undefined && cell !== ""))
     .map((row) => {
@@ -181,6 +208,17 @@ export async function leerFilas<T extends Record<string, string>>(
       });
       return obj as T;
     });
+}
+
+/** Cuenta cuántas filas de datos (sin contar el encabezado) tiene una pestaña. */
+async function contarFilas(tab: string): Promise<number> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!A2:A`,
+  });
+  return (res.data.values ?? []).filter((r) => r[0]).length;
 }
 
 /** Agrega una fila nueva al final de la pestaña. */
@@ -214,7 +252,7 @@ export async function actualizarFilaPorId(
     throw new Error(`No se encontró la fila con id ${id} en ${tab}`);
   }
   const rowNumber = idx + 2; // +2: la fila 1 es encabezado y las filas son 1-indexed
-  const headers = HEADERS[tab as keyof typeof HEADERS] as unknown as string[];
+  const headers = headersDeTab(tab);
   const lastCol = String.fromCharCode("A".charCodeAt(0) + headers.length - 1);
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -222,4 +260,94 @@ export async function actualizarFilaPorId(
     valueInputOption: "RAW",
     requestBody: { values: [valores] },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Configuración (clave/valor genérico: nombre de la app, logo, etc.)
+// ---------------------------------------------------------------------------
+
+export async function leerConfigValor(clave: string): Promise<string | null> {
+  const filas = await leerFilas<{ clave: string; valor: string }>(
+    TABS.CONFIGURACION
+  );
+  return filas.find((f) => f.clave === clave)?.valor ?? null;
+}
+
+export async function escribirConfigValor(clave: string, valor: string) {
+  const filas = await leerFilas<{ clave: string; valor: string }>(
+    TABS.CONFIGURACION
+  );
+  if (filas.some((f) => f.clave === clave)) {
+    await actualizarFilaPorId(TABS.CONFIGURACION, clave, [clave, valor]);
+  } else {
+    await agregarFila(TABS.CONFIGURACION, [clave, valor]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pestañas de Movimientos con rotación automática (ver UMBRAL_FILAS_MOVIMIENTOS)
+// ---------------------------------------------------------------------------
+
+const CLAVE_TAB_ACTIVA_MOVIMIENTOS = "movimientosTabActiva";
+
+/** Lista, en orden, todas las pestañas de movimientos que existen ("Movimientos",
+ *  "Movimientos_2", "Movimientos_3", ...). Siempre incluye al menos "Movimientos". */
+export async function listarPestañasMovimientos(): Promise<string[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  const titulos = (meta.data.sheets ?? [])
+    .map((s) => s.properties?.title ?? "")
+    .filter(
+      (t) => t === TABS.MOVIMIENTOS || t.startsWith(`${TABS.MOVIMIENTOS}_`)
+    );
+  titulos.sort((a, b) => {
+    const na = a === TABS.MOVIMIENTOS ? 1 : Number(a.split("_")[1]);
+    const nb = b === TABS.MOVIMIENTOS ? 1 : Number(b.split("_")[1]);
+    return na - nb;
+  });
+  return titulos.length > 0 ? titulos : [TABS.MOVIMIENTOS];
+}
+
+async function crearPestañaMovimientos(nombreTab: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{ addSheet: { properties: { title: nombreTab } } }],
+    },
+  });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${nombreTab}!A1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [HEADERS[TABS.MOVIMIENTOS] as unknown as string[]] },
+  });
+}
+
+/** Devuelve la pestaña de Movimientos donde hay que escribir el próximo
+ *  movimiento, rotando automáticamente a una pestaña nueva si la actual ya
+ *  está llegando al límite de filas recomendado. */
+export async function obtenerPestañaMovimientosParaEscribir(): Promise<string> {
+  const pestañas = await listarPestañasMovimientos();
+  const activa =
+    (await leerConfigValor(CLAVE_TAB_ACTIVA_MOVIMIENTOS)) ??
+    pestañas[pestañas.length - 1];
+
+  const filas = await contarFilas(activa);
+  if (filas < UMBRAL_FILAS_MOVIMIENTOS) {
+    return activa;
+  }
+
+  // Rotar: crear la siguiente pestaña y marcarla como la activa.
+  const siguienteNumero =
+    (activa === TABS.MOVIMIENTOS ? 1 : Number(activa.split("_")[1])) + 1;
+  const nueva = `${TABS.MOVIMIENTOS}_${siguienteNumero}`;
+  await crearPestañaMovimientos(nueva);
+  await escribirConfigValor(CLAVE_TAB_ACTIVA_MOVIMIENTOS, nueva);
+  return nueva;
 }

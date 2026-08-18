@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatFecha, formatMoney } from "@/lib/format";
-import type { Cuenta, Movimiento, TipoMovimiento } from "@/lib/types";
+import MoneyInput from "@/components/MoneyInput";
+import RectificarModal from "@/components/RectificarModal";
+import type { Cuenta, Movimiento, SesionInterna, TipoMovimiento } from "@/lib/types";
 
 interface UsuarioPublico {
   id: string;
@@ -17,32 +19,39 @@ export default function MovimientosPage() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioPublico[]>([]);
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [sesion, setSesion] = useState<SesionInterna | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [descripcionAbierta, setDescripcionAbierta] = useState<string | null>(null);
+  const [rectificando, setRectificando] = useState<Movimiento | null>(null);
 
   const [fecha, setFecha] = useState(hoyISO());
   const [tipo, setTipo] = useState<TipoMovimiento>("ingreso");
   const [cuentaId, setCuentaId] = useState("");
   const [cuentaDestinoId, setCuentaDestinoId] = useState("");
-  const [monto, setMonto] = useState("");
+  const [monto, setMonto] = useState(0);
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
 
   async function cargar() {
     setCargando(true);
-    const [rc, ru, rm] = await Promise.all([
+    const [rc, ru, rm, rs] = await Promise.all([
       fetch("/api/accounts"),
       fetch("/api/users/public"),
       fetch("/api/movements"),
+      fetch("/api/session"),
     ]);
     const dc = await rc.json();
     const du = await ru.json();
     const dm = await rm.json();
+    const ds = await rs.json();
     const activas = (dc.cuentas ?? []).filter((c: Cuenta) => c.activa);
     setCuentas(activas);
     setUsuarios(du.usuarios ?? []);
     setMovimientos(dm.movimientos ?? []);
+    setSesion(ds.sesion ?? null);
     if (activas.length > 0 && !cuentaId) setCuentaId(activas[0].id);
     setCargando(false);
   }
@@ -64,6 +73,24 @@ export default function MovimientosPage() {
     return m;
   }, [usuarios]);
 
+  // La cuenta destino de una transferencia solo puede ser de la misma
+  // moneda que la cuenta de origen (si no, el saldo no tiene sentido).
+  const cuentaOrigenSeleccionada = cuentasPorId.get(cuentaId);
+  const cuentasDestinoPosibles = cuentas.filter(
+    (c) => c.id !== cuentaId && c.moneda === cuentaOrigenSeleccionada?.moneda
+  );
+
+  useEffect(() => {
+    if (
+      tipo === "transferencia" &&
+      cuentaDestinoId &&
+      !cuentasDestinoPosibles.some((c) => c.id === cuentaDestinoId)
+    ) {
+      setCuentaDestinoId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuentaId, tipo]);
+
   async function crear(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -77,14 +104,14 @@ export default function MovimientosPage() {
           tipo,
           cuentaId,
           cuentaDestinoId: tipo === "transferencia" ? cuentaDestinoId : null,
-          monto: Number(monto),
+          monto,
           categoria,
           descripcion,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMonto("");
+      setMonto(0);
       setCategoria("");
       setDescripcion("");
       await cargar();
@@ -94,6 +121,28 @@ export default function MovimientosPage() {
       setGuardando(false);
     }
   }
+
+  function puedeRectificar(m: Movimiento) {
+    if (!sesion || m.anulado) return false;
+    return sesion.rol === "admin" || m.usuarioId === sesion.usuarioId;
+  }
+
+  const textoBusqueda = busqueda.trim().toLowerCase();
+  const movimientosFiltrados = textoBusqueda
+    ? movimientos.filter((m) => {
+        const cuenta = cuentasPorId.get(m.cuentaId);
+        const destino = m.cuentaDestinoId ? cuentasPorId.get(m.cuentaDestinoId) : null;
+        const campos = [
+          cuenta?.nombre,
+          destino?.nombre,
+          m.categoria,
+          m.descripcion,
+          m.tipo,
+          usuariosPorId.get(m.usuarioId),
+        ];
+        return campos.some((c) => c?.toLowerCase().includes(textoBusqueda));
+      })
+    : movimientos;
 
   return (
     <div className="space-y-8">
@@ -161,27 +210,23 @@ export default function MovimientosPage() {
                 <option value="" disabled>
                   Elegí una cuenta
                 </option>
-                {cuentas
-                  .filter((c) => c.id !== cuentaId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre} ({c.moneda})
-                    </option>
-                  ))}
+                {cuentasDestinoPosibles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre} ({c.moneda})
+                  </option>
+                ))}
               </select>
+              {cuentaOrigenSeleccionada && cuentasDestinoPosibles.length === 0 && (
+                <p className="text-xs text-madera-400 mt-1">
+                  No hay otra cuenta en {cuentaOrigenSeleccionada.moneda} para
+                  transferir.
+                </p>
+              )}
             </div>
           )}
           <div>
             <label className="label">Monto</label>
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              min="0"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              required
-            />
+            <MoneyInput value={monto} onChange={setMonto} required />
           </div>
           <div>
             <label className="label">Categoría</label>
@@ -211,7 +256,15 @@ export default function MovimientosPage() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="font-semibold text-lg mb-4">Últimos movimientos</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="font-semibold text-lg">Últimos movimientos</h2>
+          <input
+            className="input max-w-xs"
+            placeholder="Buscar por cuenta, categoría, descripción..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
         {cargando ? (
           <p className="text-madera-500 text-sm">Cargando...</p>
         ) : (
@@ -224,43 +277,88 @@ export default function MovimientosPage() {
                 <th className="py-2 pr-4">Categoría</th>
                 <th className="py-2 pr-4">Registrado por</th>
                 <th className="py-2 pr-4 text-right">Monto</th>
+                <th className="py-2 pr-4"></th>
               </tr>
             </thead>
             <tbody>
-              {movimientos.map((m) => {
+              {movimientosFiltrados.map((m) => {
                 const cuenta = cuentasPorId.get(m.cuentaId);
                 const destino = m.cuentaDestinoId
                   ? cuentasPorId.get(m.cuentaDestinoId)
                   : null;
                 const signo =
-                  m.tipo === "egreso"
-                    ? "-"
-                    : m.tipo === "ingreso"
-                      ? "+"
-                      : "";
+                  m.tipo === "egreso" ? "-" : m.tipo === "ingreso" ? "+" : "";
+                const descripcionVisible = descripcionAbierta === m.id;
                 return (
-                  <tr key={m.id} className="border-b border-madera-50 last:border-0">
-                    <td className="py-2 pr-4">{formatFecha(m.fecha)}</td>
+                  <tr
+                    key={m.id}
+                    className={`border-b border-madera-50 last:border-0 align-top ${
+                      m.anulado ? "opacity-50" : ""
+                    }`}
+                  >
+                    <td className="py-2 pr-4 whitespace-nowrap">
+                      {formatFecha(m.fecha)}
+                    </td>
                     <td className="py-2 pr-4 capitalize">{m.tipo}</td>
                     <td className="py-2 pr-4">
                       {cuenta?.nombre ?? "—"}
                       {destino && ` → ${destino.nombre}`}
                     </td>
-                    <td className="py-2 pr-4">{m.categoria || "—"}</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-1.5">
+                        <span>{m.categoria || "—"}</span>
+                        {m.descripcion && (
+                          <button
+                            type="button"
+                            title="Ver descripción"
+                            className="text-madera-400 hover:text-madera-700 shrink-0"
+                            onClick={() =>
+                              setDescripcionAbierta(
+                                descripcionVisible ? null : m.id
+                              )
+                            }
+                          >
+                            ⓘ
+                          </button>
+                        )}
+                      </div>
+                      {descripcionVisible && (
+                        <p className="text-xs text-madera-500 mt-1 max-w-xs">
+                          {m.descripcion}
+                        </p>
+                      )}
+                      {m.anulado && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Anulado{m.notaAnulacion ? `: ${m.notaAnulacion}` : ""}
+                        </p>
+                      )}
+                    </td>
                     <td className="py-2 pr-4">
                       {usuariosPorId.get(m.usuarioId) ?? "—"}
                     </td>
-                    <td className="py-2 pr-4 text-right font-medium">
+                    <td className="py-2 pr-4 text-right font-medium whitespace-nowrap">
                       {signo}
                       {formatMoney(m.monto, cuenta?.moneda ?? "ARS")}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {puedeRectificar(m) && (
+                        <button
+                          className="btn-secondary py-1 px-2 text-xs whitespace-nowrap"
+                          onClick={() => setRectificando(m)}
+                        >
+                          Rectificar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
               })}
-              {movimientos.length === 0 && (
+              {movimientosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-4 text-center text-madera-400">
-                    No hay movimientos todavía.
+                  <td colSpan={7} className="py-4 text-center text-madera-400">
+                    {movimientos.length === 0
+                      ? "No hay movimientos todavía."
+                      : "No hay resultados para esa búsqueda."}
                   </td>
                 </tr>
               )}
@@ -268,6 +366,18 @@ export default function MovimientosPage() {
           </table>
         )}
       </div>
+
+      {rectificando && (
+        <RectificarModal
+          movimiento={rectificando}
+          cuentas={cuentas}
+          onCerrar={() => setRectificando(null)}
+          onListo={() => {
+            setRectificando(null);
+            cargar();
+          }}
+        />
+      )}
     </div>
   );
 }

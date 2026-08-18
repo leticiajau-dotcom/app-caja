@@ -7,9 +7,8 @@ export const dynamic = "force-dynamic";
 
 const ActualizarCuentaSchema = z.object({
   nombre: z.string().min(1).optional(),
-  tipo: z
-    .enum(["efectivo", "banco", "billetera_virtual", "dolares", "otra"])
-    .optional(),
+  tipo: z.enum(["efectivo", "banco", "billetera_virtual", "otra"]).optional(),
+  tipoPersonalizado: z.string().nullable().optional(),
   moneda: z.string().min(1).optional(),
   usuarioResponsableId: z.string().nullable().optional(),
   activa: z.boolean().optional(),

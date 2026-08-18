@@ -32,7 +32,7 @@ export default function ConectarPage() {
     <div className="max-w-2xl mx-auto mt-10 space-y-6">
       <div className="text-center">
         <h1 className="text-2xl font-bold text-madera-800">
-          🪵 Caja Carpintería
+          🪵 Caja Negocio
         </h1>
         <p className="text-madera-600 mt-1">
           Paso único de configuración: conectá el Google Drive donde va a
@@ -62,7 +62,7 @@ export default function ConectarPage() {
         <div className="card space-y-4">
           <h2 className="font-semibold text-lg">2. Crear la planilla</h2>
           <p className="text-sm text-madera-600">
-            Se va a crear una planilla llamada "Caja Carpintería" en tu
+            Se va a crear una planilla llamada "Caja Negocio" en tu
             Google Drive, con las pestañas de Usuarios, Cuentas y
             Movimientos.
           </p>

@@ -5,9 +5,14 @@ import {
   agregarFila,
   actualizarFilaPorId,
   leerFilas,
+  leerConfigValor,
+  escribirConfigValor,
+  listarPestañasMovimientos,
+  obtenerPestañaMovimientosParaEscribir,
 } from "./googleSheets";
 import type {
   ArqueoMoneda,
+  Configuracion,
   Cuenta,
   Movimiento,
   Resumen,
@@ -124,6 +129,7 @@ function rowToCuenta(r: Record<string, string>): Cuenta {
     id: r.id,
     nombre: r.nombre,
     tipo: (r.tipo as TipoCuenta) || "otra",
+    tipoPersonalizado: r.tipoPersonalizado || null,
     moneda: r.moneda || "ARS",
     usuarioResponsableId: r.usuarioResponsableId || null,
     saldoInicial: toNum(r.saldoInicial),
@@ -141,6 +147,7 @@ export async function listarCuentas(soloActivas = false): Promise<Cuenta[]> {
 export async function crearCuenta(datos: {
   nombre: string;
   tipo: TipoCuenta;
+  tipoPersonalizado?: string | null;
   moneda: string;
   usuarioResponsableId: string | null;
   saldoInicial: number;
@@ -149,6 +156,8 @@ export async function crearCuenta(datos: {
     id: randomUUID(),
     nombre: datos.nombre.trim(),
     tipo: datos.tipo,
+    tipoPersonalizado:
+      datos.tipo === "otra" ? (datos.tipoPersonalizado?.trim() || null) : null,
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
     usuarioResponsableId: datos.usuarioResponsableId,
     saldoInicial: datos.saldoInicial || 0,
@@ -159,6 +168,7 @@ export async function crearCuenta(datos: {
     cuenta.id,
     cuenta.nombre,
     cuenta.tipo,
+    cuenta.tipoPersonalizado ?? "",
     cuenta.moneda,
     cuenta.usuarioResponsableId ?? "",
     cuenta.saldoInicial,
@@ -173,7 +183,12 @@ export async function actualizarCuenta(
   cambios: Partial<
     Pick<
       Cuenta,
-      "nombre" | "tipo" | "moneda" | "usuarioResponsableId" | "activa"
+      | "nombre"
+      | "tipo"
+      | "tipoPersonalizado"
+      | "moneda"
+      | "usuarioResponsableId"
+      | "activa"
     >
   >
 ) {
@@ -185,6 +200,7 @@ export async function actualizarCuenta(
     actualizada.id,
     actualizada.nombre,
     actualizada.tipo,
+    actualizada.tipoPersonalizado ?? "",
     actualizada.moneda,
     actualizada.usuarioResponsableId ?? "",
     actualizada.saldoInicial,
@@ -210,14 +226,57 @@ function rowToMovimiento(r: Record<string, string>): Movimiento {
     descripcion: r.descripcion || "",
     usuarioId: r.usuarioId,
     creadoEn: r.creadoEn,
+    anulado: toBool(r.anulado),
+    anuladoPorId: r.anuladoPorId || null,
+    anuladoEn: r.anuladoEn || null,
+    notaAnulacion: r.notaAnulacion || null,
+    movimientoOrigenId: r.movimientoOrigenId || null,
   };
 }
 
+function movimientoAFila(m: Movimiento): (string | number)[] {
+  return [
+    m.id,
+    m.fecha,
+    m.tipo,
+    m.cuentaId,
+    m.cuentaDestinoId ?? "",
+    m.monto,
+    m.categoria,
+    m.descripcion,
+    m.usuarioId,
+    m.creadoEn,
+    String(m.anulado),
+    m.anuladoPorId ?? "",
+    m.anuladoEn ?? "",
+    m.notaAnulacion ?? "",
+    m.movimientoOrigenId ?? "",
+  ];
+}
+
+/** Lee los movimientos de TODAS las pestañas de movimientos (la principal y
+ *  las de continuación, si las hay por rotación automática). */
 export async function listarMovimientos(): Promise<Movimiento[]> {
-  const rows = await leerFilas<Record<string, string>>(TABS.MOVIMIENTOS);
-  return rows
+  const pestañas = await listarPestañasMovimientos();
+  const listas = await Promise.all(
+    pestañas.map((tab) => leerFilas<Record<string, string>>(tab))
+  );
+  return listas
+    .flat()
     .map(rowToMovimiento)
     .sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1));
+}
+
+export async function buscarMovimientoPorId(
+  id: string
+): Promise<{ movimiento: Movimiento; tab: string } | null> {
+  const pestañas = await listarPestañasMovimientos();
+  for (const tab of pestañas) {
+    const filas = await leerFilas<Record<string, string>>(tab);
+    const fila = filas.find((f) => f.id === id);
+    if (fila) return { movimiento: rowToMovimiento(fila), tab };
+  }
+  return null;
 }
 
 export async function crearMovimiento(datos: {
@@ -229,6 +288,7 @@ export async function crearMovimiento(datos: {
   categoria: string;
   descripcion: string;
   usuarioId: string;
+  movimientoOrigenId?: string | null;
 }): Promise<Movimiento> {
   if (datos.monto <= 0) {
     throw new Error("El monto debe ser mayor a cero.");
@@ -239,6 +299,17 @@ export async function crearMovimiento(datos: {
     }
     if (datos.cuentaDestinoId === datos.cuentaId) {
       throw new Error("La cuenta destino debe ser distinta de la de origen.");
+    }
+    const cuentas = await listarCuentas();
+    const origen = cuentas.find((c) => c.id === datos.cuentaId);
+    const destino = cuentas.find((c) => c.id === datos.cuentaDestinoId);
+    if (!origen || !destino) {
+      throw new Error("Cuenta de origen o destino inválida.");
+    }
+    if (origen.moneda !== destino.moneda) {
+      throw new Error(
+        "Una transferencia solo puede ser entre cuentas de la misma moneda."
+      );
     }
   }
   const movimiento: Movimiento = {
@@ -252,27 +323,77 @@ export async function crearMovimiento(datos: {
     descripcion: datos.descripcion.trim(),
     usuarioId: datos.usuarioId,
     creadoEn: new Date().toISOString(),
+    anulado: false,
+    anuladoPorId: null,
+    anuladoEn: null,
+    notaAnulacion: null,
+    movimientoOrigenId: datos.movimientoOrigenId ?? null,
   };
-  await agregarFila(TABS.MOVIMIENTOS, [
-    movimiento.id,
-    movimiento.fecha,
-    movimiento.tipo,
-    movimiento.cuentaId,
-    movimiento.cuentaDestinoId ?? "",
-    movimiento.monto,
-    movimiento.categoria,
-    movimiento.descripcion,
-    movimiento.usuarioId,
-    movimiento.creadoEn,
-  ]);
+  const tabDestino = await obtenerPestañaMovimientosParaEscribir();
+  await agregarFila(tabDestino, movimientoAFila(movimiento));
   return movimiento;
+}
+
+/** Anula un movimiento (no lo borra: queda visible y auditado). No vuelve a
+ *  contarse en los saldos ni en el arqueo a partir de este momento. El
+ *  control de permisos (quién puede anular qué) se hace en la capa de API. */
+export async function anularMovimiento(
+  id: string,
+  datos: { anuladoPorId: string; nota: string }
+): Promise<Movimiento> {
+  const encontrado = await buscarMovimientoPorId(id);
+  if (!encontrado) throw new Error("Movimiento no encontrado.");
+  if (encontrado.movimiento.anulado) {
+    throw new Error("Este movimiento ya estaba anulado.");
+  }
+  const actualizado: Movimiento = {
+    ...encontrado.movimiento,
+    anulado: true,
+    anuladoPorId: datos.anuladoPorId,
+    anuladoEn: new Date().toISOString(),
+    notaAnulacion: datos.nota.trim(),
+  };
+  await actualizarFilaPorId(encontrado.tab, id, movimientoAFila(actualizado));
+  return actualizado;
+}
+
+// ---------------------------------------------------------------------------
+// Configuración de la app (nombre, logo)
+// ---------------------------------------------------------------------------
+
+const CLAVE_NOMBRE_APP = "nombreApp";
+const CLAVE_LOGO = "logoDataUri";
+const NOMBRE_APP_POR_DEFECTO = "Caja Negocio";
+
+export async function obtenerConfiguracion(): Promise<Configuracion> {
+  const [nombreApp, logoDataUri] = await Promise.all([
+    leerConfigValor(CLAVE_NOMBRE_APP),
+    leerConfigValor(CLAVE_LOGO),
+  ]);
+  return {
+    nombreApp: nombreApp || NOMBRE_APP_POR_DEFECTO,
+    logoDataUri: logoDataUri || "",
+  };
+}
+
+export async function actualizarConfiguracion(
+  cambios: Partial<Configuracion>
+) {
+  if (cambios.nombreApp !== undefined) {
+    await escribirConfigValor(CLAVE_NOMBRE_APP, cambios.nombreApp.trim());
+  }
+  if (cambios.logoDataUri !== undefined) {
+    await escribirConfigValor(CLAVE_LOGO, cambios.logoDataUri);
+  }
+  return obtenerConfiguracion();
 }
 
 // ---------------------------------------------------------------------------
 // Saldos y arqueo
 // ---------------------------------------------------------------------------
 
-/** Calcula el saldo de cada cuenta a partir del saldo inicial + movimientos. */
+/** Calcula el saldo de cada cuenta a partir del saldo inicial + movimientos.
+ *  Los movimientos anulados no se cuentan: es como si nunca hubieran pasado. */
 export function calcularSaldosPorCuenta(
   cuentas: Cuenta[],
   movimientos: Movimiento[]
@@ -281,6 +402,7 @@ export function calcularSaldosPorCuenta(
   for (const c of cuentas) saldos.set(c.id, c.saldoInicial);
 
   for (const m of movimientos) {
+    if (m.anulado) continue;
     if (m.tipo === "ingreso") {
       saldos.set(m.cuentaId, (saldos.get(m.cuentaId) ?? 0) + m.monto);
     } else if (m.tipo === "egreso") {

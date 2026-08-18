@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 const CrearCuentaSchema = z.object({
   nombre: z.string().min(1),
-  tipo: z.enum(["efectivo", "banco", "billetera_virtual", "dolares", "otra"]),
+  tipo: z.enum(["efectivo", "banco", "billetera_virtual", "otra"]),
+  tipoPersonalizado: z.string().nullable().optional(),
   moneda: z.string().min(1).default("ARS"),
   usuarioResponsableId: z.string().nullable().optional(),
   saldoInicial: z.number().default(0),

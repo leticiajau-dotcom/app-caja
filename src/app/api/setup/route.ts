@@ -38,7 +38,7 @@ export async function POST() {
     }
 
     const spreadsheetId = await crearPlanillaSiNoExiste(
-      "Caja Carpintería",
+      "Caja Negocio",
       refreshToken
     );
 

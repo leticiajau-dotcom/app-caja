@@ -1,17 +1,17 @@
-# Caja Carpintería
+# Caja Negocio
 
-Aplicación web para llevar el control de caja de la carpintería: ingresos,
+Aplicación web para llevar el control de caja de un negocio: ingresos,
 egresos, múltiples cuentas (efectivo, bancos, billeteras virtuales, cuentas
-en dólares, las que hagan falta), varios usuarios, saldos por cuenta y por
-usuario, y arqueo general. **Todos los datos se guardan en una planilla de
-Google Sheets**, en el Google Drive del negocio — no hay una base de datos
-aparte que administrar.
+en otras monedas, las que hagan falta), varios usuarios, saldos por cuenta y
+por usuario, y arqueo general. **Todos los datos se guardan en una planilla
+de Google Sheets**, en el Google Drive del negocio — no hay una base de
+datos aparte que administrar.
 
 ## Cómo está pensada
 
-- **La planilla de Google Sheets es la base de datos.** Tiene 3 pestañas:
-  `Usuarios`, `Cuentas` y `Movimientos`. Se puede abrir y mirar en cualquier
-  momento desde Google Drive.
+- **La planilla de Google Sheets es la base de datos.** Tiene 4 pestañas:
+  `Usuarios`, `Cuentas`, `Movimientos` y `Configuracion`. Se puede abrir y
+  mirar en cualquier momento desde Google Drive.
 - **Conexión con Google (una sola vez).** El dueño del negocio conecta su
   cuenta de Google desde `/conectar` para autorizar el acceso a Sheets/Drive
   y crear la planilla. A partir de ahí, la app queda conectada mediante un
@@ -20,13 +20,24 @@ aparte que administrar.
 - **Login diario simple.** Cada persona que usa la app (dueño, empleados)
   tiene un usuario interno con nombre + PIN de 4 a 8 dígitos. Así cualquiera
   puede registrar movimientos rápido desde el celular o la PC del taller.
-- **Cuentas configurables.** Cada cuenta tiene tipo (efectivo, banco,
-  billetera virtual, dólares, otra), moneda y, opcionalmente, un usuario
+- **Cuentas configurables.** Cada cuenta tiene tipo (efectivo, cuenta
+  bancaria, billetera virtual, u "otra" con nombre libre), moneda (ARS, USD,
+  EUR, BRL o cualquier otra que se escriba) y, opcionalmente, un usuario
   responsable.
 - **Saldos y arqueo.** El saldo de cada cuenta es su saldo inicial más los
   ingresos, menos los egresos, más/menos las transferencias. El arqueo
   general se muestra agrupado por moneda (no se suman ARS y USD entre sí,
-  para no mezclar valores).
+  para no mezclar valores), en tarjetas que se pueden reordenar arrastrando
+  (el orden se recuerda en el navegador).
+- **Rectificación de movimientos.** Nunca se edita ni se borra un movimiento
+  ya cargado: se anula (queda visible, con quién y por qué) y, opcionalmente,
+  se carga uno nuevo ya corregido, enlazado al original. Un administrador
+  puede rectificar cualquier movimiento; un empleado solo los que él mismo
+  cargó y que todavía no estén anulados.
+- **Nombre y logo personalizables** desde **Configuración** (solo admin).
+- **Sin límite práctico de movimientos.** Si la pestaña de Movimientos se
+  acerca al límite recomendado de filas, la app crea sola una pestaña de
+  continuación y sigue funcionando sin cortes.
 
 ## 1. Crear las credenciales de Google
 
@@ -119,8 +130,9 @@ src/
     login/          Login interno (usuario + PIN)
     dashboard/      Arqueo general y saldos
     cuentas/        Alta y baja de cuentas
-    movimientos/    Carga de ingresos, egresos y transferencias
+    movimientos/    Carga de ingresos, egresos, transferencias y rectificaciones
     usuarios/       Gestión de usuarios internos (solo admin)
+    configuracion/  Nombre y logo de la app (solo admin)
     api/            Endpoints REST usados por las páginas
   lib/
     googleSheets.ts Cliente de Google Sheets/Drive y creación de la planilla
@@ -131,10 +143,8 @@ src/
 
 ## Limitaciones conocidas / próximos pasos posibles
 
-- Los movimientos no se pueden borrar ni editar desde la app (por diseño,
-  para mantener un historial confiable); si hace falta corregir algo, se
-  carga un movimiento inverso. Se podría agregar edición/anulación más
-  adelante.
+- Los movimientos no se editan ni se borran nunca (por diseño, para mantener
+  un historial confiable): se rectifican (ver "Cómo está pensada" arriba).
 - Cada moneda se totaliza por separado en el arqueo (no se convierte
   USD → ARS automáticamente). Se podría sumar un tipo de cambio manual si
   hace falta un total único.

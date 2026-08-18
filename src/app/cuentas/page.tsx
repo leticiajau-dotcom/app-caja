@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TIPOS_CUENTA, formatMoney } from "@/lib/format";
-import type { Cuenta } from "@/lib/types";
+import {
+  MONEDAS_SUGERIDAS,
+  TIPOS_CUENTA,
+  formatMoney,
+  tipoCuentaLabel,
+} from "@/lib/format";
+import MoneyInput from "@/components/MoneyInput";
+import type { Cuenta, TipoCuenta } from "@/lib/types";
 
 interface UsuarioPublico {
   id: string;
   nombre: string;
 }
+
+const MONEDA_OTRA = "__otra__";
 
 export default function CuentasPage() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
@@ -16,10 +24,12 @@ export default function CuentasPage() {
   const [error, setError] = useState("");
 
   const [nombre, setNombre] = useState("");
-  const [tipo, setTipo] = useState("efectivo");
-  const [moneda, setMoneda] = useState("ARS");
+  const [tipo, setTipo] = useState<TipoCuenta>("efectivo");
+  const [tipoPersonalizado, setTipoPersonalizado] = useState("");
+  const [monedaSeleccion, setMonedaSeleccion] = useState("ARS");
+  const [monedaLibre, setMonedaLibre] = useState("");
   const [responsable, setResponsable] = useState("");
-  const [saldoInicial, setSaldoInicial] = useState("0");
+  const [saldoInicial, setSaldoInicial] = useState(0);
   const [guardando, setGuardando] = useState(false);
 
   async function cargar() {
@@ -43,22 +53,29 @@ export default function CuentasPage() {
     e.preventDefault();
     setError("");
     setGuardando(true);
+    const moneda =
+      monedaSeleccion === MONEDA_OTRA ? monedaLibre.trim() : monedaSeleccion;
     try {
+      if (!moneda) {
+        throw new Error("Ingresá el código de la moneda.");
+      }
       const res = await fetch("/api/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre,
           tipo,
+          tipoPersonalizado: tipo === "otra" ? tipoPersonalizado : null,
           moneda,
           usuarioResponsableId: responsable || null,
-          saldoInicial: Number(saldoInicial) || 0,
+          saldoInicial,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setNombre("");
-      setSaldoInicial("0");
+      setTipoPersonalizado("");
+      setSaldoInicial(0);
       await cargar();
     } catch (e: any) {
       setError(e.message ?? "Error inesperado.");
@@ -81,8 +98,8 @@ export default function CuentasPage() {
       <div>
         <h1 className="text-2xl font-bold text-madera-800">Cuentas</h1>
         <p className="text-madera-600">
-          Efectivo, bancos, billeteras virtuales, cuentas en dólares... Creá
-          las que necesites.
+          Efectivo, bancos, billeteras virtuales, cuentas en otras monedas...
+          Creá las que necesites.
         </p>
       </div>
 
@@ -104,7 +121,7 @@ export default function CuentasPage() {
             <select
               className="input"
               value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
+              onChange={(e) => setTipo(e.target.value as TipoCuenta)}
             >
               {TIPOS_CUENTA.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -113,16 +130,46 @@ export default function CuentasPage() {
               ))}
             </select>
           </div>
+          {tipo === "otra" && (
+            <div>
+              <label className="label">Nombre del tipo</label>
+              <input
+                className="input"
+                placeholder="Ej: Cheque, Inversión, Caja de ahorro..."
+                value={tipoPersonalizado}
+                onChange={(e) => setTipoPersonalizado(e.target.value)}
+                required
+              />
+            </div>
+          )}
           <div>
             <label className="label">Moneda</label>
-            <input
+            <select
               className="input"
-              placeholder="ARS, USD..."
-              value={moneda}
-              onChange={(e) => setMoneda(e.target.value)}
-              required
-            />
+              value={monedaSeleccion}
+              onChange={(e) => setMonedaSeleccion(e.target.value)}
+            >
+              {MONEDAS_SUGERIDAS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+              <option value={MONEDA_OTRA}>Otra...</option>
+            </select>
           </div>
+          {monedaSeleccion === MONEDA_OTRA && (
+            <div>
+              <label className="label">Código de moneda</label>
+              <input
+                className="input"
+                placeholder="Ej: CLP, UYU, GBP..."
+                value={monedaLibre}
+                onChange={(e) => setMonedaLibre(e.target.value.toUpperCase())}
+                maxLength={10}
+                required
+              />
+            </div>
+          )}
           <div>
             <label className="label">Responsable</label>
             <select
@@ -140,13 +187,7 @@ export default function CuentasPage() {
           </div>
           <div>
             <label className="label">Saldo inicial</label>
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              value={saldoInicial}
-              onChange={(e) => setSaldoInicial(e.target.value)}
-            />
+            <MoneyInput value={saldoInicial} onChange={setSaldoInicial} />
           </div>
           <div className="sm:col-span-2">
             {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
@@ -178,9 +219,7 @@ export default function CuentasPage() {
               {cuentas.map((c) => (
                 <tr key={c.id} className="border-b border-madera-50 last:border-0">
                   <td className="py-2 pr-4">{c.nombre}</td>
-                  <td className="py-2 pr-4 capitalize">
-                    {c.tipo.replace("_", " ")}
-                  </td>
+                  <td className="py-2 pr-4">{tipoCuentaLabel(c)}</td>
                   <td className="py-2 pr-4">{c.moneda}</td>
                   <td className="py-2 pr-4">
                     {usuarios.find((u) => u.id === c.usuarioResponsableId)

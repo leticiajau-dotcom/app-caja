@@ -4,7 +4,7 @@ import Providers from "@/components/Providers";
 import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
-  title: "Caja Carpintería",
+  title: "Caja Negocio",
   description: "Control de ingresos, egresos y saldos del negocio.",
 };
 

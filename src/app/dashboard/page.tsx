@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/internalSession";
 import { obtenerResumen } from "@/lib/repo";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, tipoCuentaLabel } from "@/lib/format";
+import ArqueoCards from "@/components/ArqueoCards";
 
 export const dynamic = "force-dynamic";
 
@@ -25,25 +26,7 @@ export default async function DashboardPage() {
         <h2 className="text-lg font-semibold text-madera-800 mb-3">
           Arqueo total
         </h2>
-        {resumen.arqueoPorMoneda.length === 0 ? (
-          <p className="text-madera-500 text-sm">
-            Todavía no hay cuentas cargadas.
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {resumen.arqueoPorMoneda.map((a) => (
-              <div key={a.moneda} className="card">
-                <p className="text-sm text-madera-500">{a.moneda}</p>
-                <p className="text-2xl font-bold text-madera-800">
-                  {formatMoney(a.total, a.moneda)}
-                </p>
-                <p className="text-xs text-madera-400 mt-1">
-                  {a.cuentas.length} cuenta{a.cuentas.length !== 1 && "s"}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
+        <ArqueoCards items={resumen.arqueoPorMoneda} />
       </section>
 
       <section>
@@ -64,9 +47,7 @@ export default async function DashboardPage() {
               {resumen.saldosPorCuenta.map(({ cuenta, saldo }) => (
                 <tr key={cuenta.id} className="border-b border-madera-50 last:border-0">
                   <td className="py-2 pr-4">{cuenta.nombre}</td>
-                  <td className="py-2 pr-4 capitalize">
-                    {cuenta.tipo.replace("_", " ")}
-                  </td>
+                  <td className="py-2 pr-4">{tipoCuentaLabel(cuenta)}</td>
                   <td className="py-2 pr-4">{cuenta.moneda}</td>
                   <td className="py-2 pr-4 text-right font-medium">
                     {formatMoney(saldo, cuenta.moneda)}

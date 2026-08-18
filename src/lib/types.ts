@@ -11,18 +11,15 @@ export interface Usuario {
   creadoEn: string;
 }
 
-/** Tipo de cuenta. El usuario puede crear las que necesite; estas son sugerencias iniciales. */
-export type TipoCuenta =
-  | "efectivo"
-  | "banco"
-  | "billetera_virtual"
-  | "dolares"
-  | "otra";
+/** Tipo de cuenta. "otra" permite un nombre libre en tipoPersonalizado. */
+export type TipoCuenta = "efectivo" | "banco" | "billetera_virtual" | "otra";
 
 export interface Cuenta {
   id: string;
   nombre: string;
   tipo: TipoCuenta;
+  /** Solo tiene sentido cuando tipo === "otra": nombre libre elegido por el usuario. */
+  tipoPersonalizado: string | null;
   moneda: string; // ej: ARS, USD, EUR
   usuarioResponsableId: string | null; // quién "tiene" la cuenta / es responsable
   saldoInicial: number;
@@ -44,6 +41,15 @@ export interface Movimiento {
   descripcion: string;
   usuarioId: string; // quién registró el movimiento
   creadoEn: string;
+
+  // --- Rectificaciones / auditoría ---
+  /** Si es true, este movimiento NO se cuenta en los saldos: fue anulado por un error de carga. */
+  anulado: boolean;
+  anuladoPorId: string | null;
+  anuladoEn: string | null;
+  notaAnulacion: string | null;
+  /** Si este movimiento es la corrección de otro, acá va el id del movimiento anulado que reemplaza. */
+  movimientoOrigenId: string | null;
 }
 
 export interface SaldoCuenta {
@@ -73,4 +79,10 @@ export interface SesionInterna {
   usuarioId: string;
   nombre: string;
   rol: Rol;
+}
+
+export interface Configuracion {
+  nombreApp: string;
+  /** Data URI (base64) de un logo chico, o cadena vacía si no hay logo cargado. */
+  logoDataUri: string;
 }
