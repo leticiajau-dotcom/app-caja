@@ -187,16 +187,77 @@ export function planillaUrl() {
   return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : null;
 }
 
+/** Crea la pestaña si no existe (planillas creadas antes de sumar alguna
+ *  funcionalidad, como "Configuracion", no la tienen) y actualiza la fila
+ *  de encabezados si quedó más corta que la actual (por columnas nuevas
+ *  agregadas después). Se usa como reparación automática ante errores. */
+async function asegurarPestaña(tab: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const headers = headersDeTab(tab) as unknown as string[];
+
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  const existe = (meta.data.sheets ?? []).some(
+    (s) => s.properties?.title === tab
+  );
+
+  if (!existe) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: tab } } }],
+      },
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tab}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [headers] },
+    });
+    return;
+  }
+
+  // La pestaña existe: si el encabezado quedó corto (se agregaron columnas
+  // nuevas después de crearla), lo completamos sin tocar los datos.
+  const filaActual = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!A1:Z1`,
+  });
+  const largoActual = (filaActual.data.values?.[0] ?? []).length;
+  if (largoActual < headers.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tab}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [headers] },
+    });
+  }
+}
+
 /** Lee todas las filas de una pestaña como objetos, usando la fila 1 como encabezado. */
 export async function leerFilas<T extends Record<string, string>>(
   tab: string
 ): Promise<T[]> {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${tab}!A2:Z`,
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!A2:Z`,
+    });
+  } catch {
+    // Puede ser una planilla creada antes de que esta pestaña existiera:
+    // la creamos (o le completamos el encabezado) y reintentamos una vez.
+    await asegurarPestaña(tab);
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!A2:Z`,
+    });
+  }
   const rows = res.data.values ?? [];
   const headers = headersDeTab(tab);
   return rows
@@ -214,10 +275,19 @@ export async function leerFilas<T extends Record<string, string>>(
 async function contarFilas(tab: string): Promise<number> {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${tab}!A2:A`,
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!A2:A`,
+    });
+  } catch {
+    await asegurarPestaña(tab);
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!A2:A`,
+    });
+  }
   return (res.data.values ?? []).filter((r) => r[0]).length;
 }
 
@@ -225,13 +295,24 @@ async function contarFilas(tab: string): Promise<number> {
 export async function agregarFila(tab: string, valores: (string | number)[]) {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: `${tab}!A1`,
-    valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [valores] },
-  });
+  try {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${tab}!A1`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [valores] },
+    });
+  } catch {
+    await asegurarPestaña(tab);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${tab}!A1`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [valores] },
+    });
+  }
 }
 
 /** Sobrescribe una fila existente (por id, en la primera columna) con nuevos valores. */
