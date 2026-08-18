@@ -6,7 +6,12 @@ import type { Cuenta, Movimiento, TipoMovimiento } from "@/lib/types";
 
 interface Props {
   movimiento: Movimiento;
+  /** Todas las cuentas activas (para elegir la cuenta destino de una
+   *  transferencia, igual que en el formulario principal). */
   cuentas: Cuenta[];
+  /** Cuentas en las que el usuario actual puede cargar movimientos (todas,
+   *  si es admin; solo las propias, si es empleado). */
+  cuentasOperables: Cuenta[];
   onCerrar: () => void;
   onListo: () => void;
 }
@@ -16,6 +21,7 @@ interface Props {
 export default function RectificarModal({
   movimiento,
   cuentas,
+  cuentasOperables,
   onCerrar,
   onListo,
 }: Props) {
@@ -141,7 +147,7 @@ export default function RectificarModal({
                   onChange={(e) => setCuentaId(e.target.value)}
                   required
                 >
-                  {cuentas.map((c) => (
+                  {cuentasOperables.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nombre} ({c.moneda})
                     </option>

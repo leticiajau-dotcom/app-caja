@@ -48,11 +48,18 @@ export default function MovimientosPage() {
     const dm = await rm.json();
     const ds = await rs.json();
     const activas = (dc.cuentas ?? []).filter((c: Cuenta) => c.activa);
+    const sesionActual: SesionInterna | null = ds.sesion ?? null;
     setCuentas(activas);
     setUsuarios(du.usuarios ?? []);
     setMovimientos(dm.movimientos ?? []);
-    setSesion(ds.sesion ?? null);
-    if (activas.length > 0 && !cuentaId) setCuentaId(activas[0].id);
+    setSesion(sesionActual);
+    if (!cuentaId && sesionActual) {
+      const operables =
+        sesionActual.rol === "admin"
+          ? activas
+          : activas.filter((c: Cuenta) => c.usuarioResponsableId === sesionActual.usuarioId);
+      if (operables.length > 0) setCuentaId(operables[0].id);
+    }
     setCargando(false);
   }
 
@@ -72,6 +79,14 @@ export default function MovimientosPage() {
     usuarios.forEach((u) => m.set(u.id, u.nombre));
     return m;
   }, [usuarios]);
+
+  // Un admin puede cargar movimientos en cualquier cuenta. Un empleado solo
+  // en las cuentas de las que él mismo es responsable.
+  const cuentasOperables = useMemo(() => {
+    if (!sesion) return [];
+    if (sesion.rol === "admin") return cuentas;
+    return cuentas.filter((c) => c.usuarioResponsableId === sesion.usuarioId);
+  }, [cuentas, sesion]);
 
   // La cuenta destino de una transferencia solo puede ser de la misma
   // moneda que la cuenta de origen (si no, el saldo no tiene sentido).
@@ -187,16 +202,23 @@ export default function MovimientosPage() {
               value={cuentaId}
               onChange={(e) => setCuentaId(e.target.value)}
               required
+              disabled={cuentasOperables.length === 0}
             >
               <option value="" disabled>
                 Elegí una cuenta
               </option>
-              {cuentas.map((c) => (
+              {cuentasOperables.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre} ({c.moneda})
                 </option>
               ))}
             </select>
+            {!cargando && cuentasOperables.length === 0 && (
+              <p className="text-xs text-red-500 mt-1">
+                No sos responsable de ninguna cuenta todavía. Pedile a un
+                administrador que te asigne una en "Cuentas".
+              </p>
+            )}
           </div>
           {tipo === "transferencia" && (
             <div>
@@ -367,10 +389,11 @@ export default function MovimientosPage() {
         )}
       </div>
 
-      {rectificando && (
+      {rectificando && sesion && (
         <RectificarModal
           movimiento={rectificando}
           cuentas={cuentas}
+          cuentasOperables={cuentasOperables}
           onCerrar={() => setRectificando(null)}
           onListo={() => {
             setRectificando(null);

@@ -210,6 +210,20 @@ export async function actualizarCuenta(
   return actualizada;
 }
 
+/** Un admin puede cargar movimientos en cualquier cuenta. Un empleado solo
+ *  en las cuentas de las que él mismo es responsable — ni en las de otro
+ *  responsable, ni en las que no tienen responsable asignado (esas quedan
+ *  reservadas para un admin, hasta que se les asigne alguien). */
+export async function usuarioPuedeOperarCuenta(
+  sesion: { usuarioId: string; rol: Rol },
+  cuentaId: string
+): Promise<boolean> {
+  if (sesion.rol === "admin") return true;
+  const cuentas = await listarCuentas();
+  const cuenta = cuentas.find((c) => c.id === cuentaId);
+  return Boolean(cuenta && cuenta.usuarioResponsableId === sesion.usuarioId);
+}
+
 // ---------------------------------------------------------------------------
 // Movimientos
 // ---------------------------------------------------------------------------

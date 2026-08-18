@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { manejarError, requerirSesion } from "@/lib/guards";
-import { crearMovimiento, listarMovimientos } from "@/lib/repo";
+import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
+import { crearMovimiento, listarMovimientos, usuarioPuedeOperarCuenta } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,14 @@ export async function POST(req: Request) {
     const sesion = await requerirSesion();
     const body = await req.json();
     const datos = CrearMovimientoSchema.parse(body);
+
+    if (!(await usuarioPuedeOperarCuenta(sesion, datos.cuentaId))) {
+      throw new ApiError(
+        "No podés cargar movimientos en una cuenta de la que no sos responsable.",
+        403
+      );
+    }
+
     const movimiento = await crearMovimiento({
       ...datos,
       usuarioId: sesion.usuarioId,
