@@ -59,12 +59,17 @@ export interface SaldoCuenta {
 
 /** Saldo agrupado por la combinación exacta de responsables de una o más
  *  cuentas (ej: cuentas de "Leticia" sola, cuentas de "Pablo" solo, y por
- *  separado las cuentas donde ambos son responsables en conjunto). */
+ *  separado las cuentas donde ambos son responsables en conjunto). Las
+ *  cuentas activas sin responsable asignado forman su propio grupo
+ *  ("Sin responsable asignado") para no perderse del resumen. */
 export interface SaldoGrupoResponsables {
   usuarioIds: string[];
   /** Nombres de los responsables unidos, ej: "Leticia - Pablo". */
   etiqueta: string;
   porMoneda: Record<string, number>;
+  /** Las cuentas del grupo, agrupadas a su vez por moneda (para poder listar
+   *  cada cuenta debajo del subtotal de su grupo + moneda). */
+  cuentasPorMoneda: Record<string, SaldoCuenta[]>;
 }
 
 export interface ArqueoMoneda {

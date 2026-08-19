@@ -448,11 +448,16 @@ export function calcularSaldosPorCuenta(
   }));
 }
 
+const ETIQUETA_SIN_RESPONSABLE = "Sin responsable asignado";
+const CLAVE_SIN_RESPONSABLE = "__sin_responsable__";
+
 /** Agrupa el saldo por la combinación exacta de responsables de cada
  *  cuenta: una cuenta con un solo responsable suma al grupo de esa persona
  *  sola; una cuenta con varios responsables arma su propio grupo (ej.
  *  "Leticia - Pablo") en vez de sumarse a los saldos individuales de cada
- *  uno. Las cuentas sin responsable asignado no entran en esta lista. */
+ *  uno. Las cuentas sin responsable asignado se agrupan aparte, bajo "Sin
+ *  responsable asignado". Solo se consideran las cuentas activas (es el
+ *  resumen general de la caja, no un archivo histórico). */
 export function calcularSaldosPorGrupoResponsable(
   usuarios: Usuario[],
   saldosPorCuenta: SaldoCuenta[]
@@ -460,28 +465,47 @@ export function calcularSaldosPorGrupoResponsable(
   const nombrePorId = new Map(usuarios.map((u) => [u.id, u.nombre]));
   const grupos = new Map<string, SaldoGrupoResponsables>();
 
-  for (const { cuenta, saldo } of saldosPorCuenta) {
-    if (cuenta.usuarioResponsablesIds.length === 0) continue;
-    const idsOrdenados = [...cuenta.usuarioResponsablesIds].sort((a, b) =>
-      (nombrePorId.get(a) ?? "").localeCompare(nombrePorId.get(b) ?? "")
-    );
-    const clave = idsOrdenados.join("|");
+  for (const item of saldosPorCuenta) {
+    const { cuenta, saldo } = item;
+    if (!cuenta.activa) continue;
+
+    let clave: string;
+    let usuarioIds: string[];
+    let etiqueta: string;
+    if (cuenta.usuarioResponsablesIds.length === 0) {
+      clave = CLAVE_SIN_RESPONSABLE;
+      usuarioIds = [];
+      etiqueta = ETIQUETA_SIN_RESPONSABLE;
+    } else {
+      usuarioIds = [...cuenta.usuarioResponsablesIds].sort((a, b) =>
+        (nombrePorId.get(a) ?? "").localeCompare(nombrePorId.get(b) ?? "")
+      );
+      clave = usuarioIds.join("|");
+      etiqueta = usuarioIds.map((id) => nombrePorId.get(id) ?? "?").join(" - ");
+    }
+
     if (!grupos.has(clave)) {
       grupos.set(clave, {
-        usuarioIds: idsOrdenados,
-        etiqueta: idsOrdenados
-          .map((id) => nombrePorId.get(id) ?? "?")
-          .join(" - "),
+        usuarioIds,
+        etiqueta,
         porMoneda: {},
+        cuentasPorMoneda: {},
       });
     }
     const grupo = grupos.get(clave)!;
     grupo.porMoneda[cuenta.moneda] = (grupo.porMoneda[cuenta.moneda] ?? 0) + saldo;
+    if (!grupo.cuentasPorMoneda[cuenta.moneda]) {
+      grupo.cuentasPorMoneda[cuenta.moneda] = [];
+    }
+    grupo.cuentasPorMoneda[cuenta.moneda].push(item);
   }
 
-  return Array.from(grupos.values()).sort((a, b) =>
-    a.etiqueta.localeCompare(b.etiqueta)
-  );
+  return Array.from(grupos.values()).sort((a, b) => {
+    // El grupo "sin responsable" siempre va al final.
+    if (a.etiqueta === ETIQUETA_SIN_RESPONSABLE) return 1;
+    if (b.etiqueta === ETIQUETA_SIN_RESPONSABLE) return -1;
+    return a.etiqueta.localeCompare(b.etiqueta);
+  });
 }
 
 export function calcularArqueoPorMoneda(

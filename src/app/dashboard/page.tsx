@@ -1,8 +1,8 @@
+import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/internalSession";
 import { obtenerResumen } from "@/lib/repo";
 import { formatMoney } from "@/lib/format";
-import ArqueoCards from "@/components/ArqueoCards";
 
 export const dynamic = "force-dynamic";
 
@@ -11,29 +11,24 @@ export default async function DashboardPage() {
   if (!sesion) redirect("/login");
 
   const resumen = await obtenerResumen();
+  const hayCuentas = resumen.saldosPorGrupoResponsable.length > 0;
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-madera-800">Resumen</h1>
         <p className="text-madera-600">
-          Arqueo general y saldos de todas las cuentas, actualizados con cada
-          movimiento cargado.
+          Cuentas agrupadas por responsable, con subtotales por responsable y
+          moneda, y los totales generales de la caja al final.
         </p>
       </div>
 
-      <section>
-        <h2 className="text-lg font-semibold text-madera-800 mb-3">
-          Arqueo total
-        </h2>
-        <ArqueoCards items={resumen.arqueoPorMoneda} />
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold text-madera-800 mb-3">
-          Saldo por cuenta
-        </h2>
-        <div className="card overflow-x-auto">
+      <div className="card overflow-x-auto">
+        {!hayCuentas ? (
+          <p className="text-madera-500 text-sm">
+            Todavía no hay cuentas activas cargadas.
+          </p>
+        ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-madera-500 border-b border-madera-100">
@@ -43,63 +38,78 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {resumen.saldosPorCuenta.map(({ cuenta, saldo }) => (
-                <tr key={cuenta.id} className="border-b border-madera-50 last:border-0">
-                  <td className="py-2 pr-4">{cuenta.nombre}</td>
-                  <td className="py-2 pr-4">{cuenta.moneda}</td>
-                  <td className="py-2 pr-4 text-right font-medium">
-                    {formatMoney(saldo, cuenta.moneda)}
+              {resumen.saldosPorGrupoResponsable.map((grupo) => {
+                const monedas = Object.keys(grupo.cuentasPorMoneda).sort((a, b) =>
+                  a.localeCompare(b)
+                );
+                return (
+                  <Fragment key={grupo.usuarioIds.join("|") || "sin-responsable"}>
+                    <tr className="bg-madera-50">
+                      <td
+                        colSpan={3}
+                        className="py-2 px-2 font-semibold text-madera-800"
+                      >
+                        {grupo.etiqueta}
+                      </td>
+                    </tr>
+                    {monedas.map((moneda) => (
+                      <Fragment key={moneda}>
+                        {grupo.cuentasPorMoneda[moneda].map(({ cuenta, saldo }) => (
+                          <tr
+                            key={cuenta.id}
+                            className="border-b border-madera-50 last:border-0"
+                          >
+                            <td className="py-2 pr-4 pl-6">{cuenta.nombre}</td>
+                            <td className="py-2 pr-4">{moneda}</td>
+                            <td className="py-2 pr-4 text-right">
+                              {formatMoney(saldo, moneda)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-b border-madera-100 bg-madera-50/60">
+                          <td
+                            colSpan={2}
+                            className="py-1.5 pr-4 pl-6 text-right text-xs text-madera-500"
+                          >
+                            Subtotal {grupo.etiqueta} · {moneda}
+                          </td>
+                          <td className="py-1.5 pr-4 text-right font-semibold text-madera-700">
+                            {formatMoney(grupo.porMoneda[moneda], moneda)}
+                          </td>
+                        </tr>
+                      </Fragment>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} className="pt-4 pb-1 pr-4">
+                  <div className="border-t-2 border-madera-200" />
+                </td>
+              </tr>
+              {resumen.arqueoPorMoneda.map((a) => (
+                <tr key={a.moneda}>
+                  <td colSpan={2} className="py-1 pr-4 text-right font-bold text-madera-800">
+                    Total {a.moneda}
+                  </td>
+                  <td className="py-1 pr-4 text-right font-bold text-madera-800">
+                    {formatMoney(a.total, a.moneda)}
                   </td>
                 </tr>
               ))}
-              {resumen.saldosPorCuenta.length === 0 && (
+              {resumen.arqueoPorMoneda.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-madera-400">
-                    No hay cuentas todavía.
+                  <td colSpan={3} className="py-1 pr-4 text-center text-madera-400">
+                    Sin totales todavía.
                   </td>
                 </tr>
               )}
-            </tbody>
+            </tfoot>
           </table>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold text-madera-800 mb-3">
-          Saldo por responsable
-        </h2>
-        <p className="text-sm text-madera-500 mb-3">
-          Las cuentas con un solo responsable suman a su saldo individual.
-          Las que tienen varios responsables en conjunto forman su propio
-          grupo (ej. "Leticia - Pablo"), sin mezclarse con los saldos
-          individuales de cada uno.
-        </p>
-        {resumen.saldosPorGrupoResponsable.length === 0 ? (
-          <p className="text-sm text-madera-400">
-            Todavía no hay cuentas con responsables asignados.
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {resumen.saldosPorGrupoResponsable.map((grupo) => (
-              <div key={grupo.usuarioIds.join("|")} className="card">
-                <p className="font-semibold text-madera-800">
-                  {grupo.etiqueta}
-                </p>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {Object.entries(grupo.porMoneda).map(([moneda, saldo]) => (
-                    <li key={moneda} className="flex justify-between">
-                      <span className="text-madera-500">{moneda}</span>
-                      <span className="font-medium">
-                        {formatMoney(saldo, moneda)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
