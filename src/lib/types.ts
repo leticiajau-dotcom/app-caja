@@ -16,7 +16,9 @@ export interface Cuenta {
   nombre: string;
   moneda: string; // ej: ARS, USD, EUR
   /** Quiénes son responsables de la cuenta (pueden cargarle movimientos).
-   *  Vacío = sin responsables asignados (solo un admin puede operarla). */
+   *  Toda cuenta nueva o editada debe tener al menos uno (se valida al
+   *  crear/editar). Puede haber cuentas viejas, de antes de esta regla,
+   *  que todavía tengan la lista vacía hasta que un admin les asigne uno. */
   usuarioResponsablesIds: string[];
   saldoInicial: number;
   activa: boolean;

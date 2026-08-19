@@ -64,6 +64,7 @@ export default function CuentasPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [responsablesEdicion, setResponsablesEdicion] = useState<string[]>([]);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [errorEdicion, setErrorEdicion] = useState("");
 
   async function cargar() {
     setCargando(true);
@@ -94,6 +95,9 @@ export default function CuentasPage() {
     try {
       if (!moneda) {
         throw new Error("Ingresá el código de la moneda.");
+      }
+      if (responsables.length === 0) {
+        throw new Error("Seleccioná al menos un responsable para la cuenta.");
       }
       const res = await fetch("/api/accounts", {
         method: "POST",
@@ -130,18 +134,28 @@ export default function CuentasPage() {
   function empezarEdicion(cuenta: Cuenta) {
     setEditandoId(cuenta.id);
     setResponsablesEdicion(cuenta.usuarioResponsablesIds);
+    setErrorEdicion("");
   }
 
   async function guardarResponsables(cuentaId: string) {
+    if (responsablesEdicion.length === 0) {
+      setErrorEdicion("La cuenta necesita al menos un responsable.");
+      return;
+    }
+    setErrorEdicion("");
     setGuardandoEdicion(true);
     try {
-      await fetch(`/api/accounts/${cuentaId}`, {
+      const res = await fetch(`/api/accounts/${cuentaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuarioResponsablesIds: responsablesEdicion }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
       setEditandoId(null);
       await cargar();
+    } catch (e: any) {
+      setErrorEdicion(e.message ?? "Error inesperado.");
     } finally {
       setGuardandoEdicion(false);
     }
@@ -210,8 +224,8 @@ export default function CuentasPage() {
               onChange={setResponsables}
             />
             <p className="text-xs text-madera-400 mt-1">
-              Si no marcás a nadie, nadie va a poder cargarle movimientos
-              hasta que le asignes un responsable.
+              Toda cuenta necesita al menos un responsable que pueda
+              cargarle movimientos.
             </p>
           </div>
           <div>
@@ -257,11 +271,14 @@ export default function CuentasPage() {
                           seleccionados={responsablesEdicion}
                           onChange={setResponsablesEdicion}
                         />
+                        {errorEdicion && (
+                          <p className="text-xs text-red-600">{errorEdicion}</p>
+                        )}
                         <div className="flex gap-2">
                           <button
                             type="button"
                             className="btn-primary py-1 px-2 text-xs"
-                            disabled={guardandoEdicion}
+                            disabled={guardandoEdicion || responsablesEdicion.length === 0}
                             onClick={() => guardarResponsables(c.id)}
                           >
                             {guardandoEdicion ? "Guardando..." : "Guardar"}
@@ -269,7 +286,10 @@ export default function CuentasPage() {
                           <button
                             type="button"
                             className="btn-secondary py-1 px-2 text-xs"
-                            onClick={() => setEditandoId(null)}
+                            onClick={() => {
+                              setEditandoId(null);
+                              setErrorEdicion("");
+                            }}
                           >
                             Cancelar
                           </button>
@@ -278,14 +298,18 @@ export default function CuentasPage() {
                     ) : (
                       <div className="flex items-center gap-2 flex-wrap">
                         <span>
-                          {c.usuarioResponsablesIds.length === 0
-                            ? "— (solo admin)"
-                            : c.usuarioResponsablesIds
-                                .map(
-                                  (id) =>
-                                    usuarios.find((u) => u.id === id)?.nombre ?? "?"
-                                )
-                                .join(", ")}
+                          {c.usuarioResponsablesIds.length === 0 ? (
+                            <span className="text-amber-600">
+                              ⚠ Sin responsable — asignale uno
+                            </span>
+                          ) : (
+                            c.usuarioResponsablesIds
+                              .map(
+                                (id) =>
+                                  usuarios.find((u) => u.id === id)?.nombre ?? "?"
+                              )
+                              .join(", ")
+                          )}
                         </span>
                         {esAdmin && (
                           <button

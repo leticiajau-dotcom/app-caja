@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 const CrearCuentaSchema = z.object({
   nombre: z.string().min(1),
   moneda: z.string().min(1).default("ARS"),
-  usuarioResponsablesIds: z.array(z.string()).default([]),
+  usuarioResponsablesIds: z
+    .array(z.string())
+    .min(1, "La cuenta necesita al menos un responsable."),
   saldoInicial: z.number().default(0),
 });
 

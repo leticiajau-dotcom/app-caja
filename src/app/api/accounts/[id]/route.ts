@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
 const ActualizarCuentaSchema = z.object({
   nombre: z.string().min(1).optional(),
   moneda: z.string().min(1).optional(),
-  usuarioResponsablesIds: z.array(z.string()).optional(),
+  usuarioResponsablesIds: z
+    .array(z.string())
+    .min(1, "La cuenta necesita al menos un responsable.")
+    .optional(),
   activa: z.boolean().optional(),
 });
 

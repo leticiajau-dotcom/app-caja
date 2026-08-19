@@ -153,6 +153,9 @@ export async function crearCuenta(datos: {
    *  usuario que cargó el movimiento de apertura. */
   usuarioId: string;
 }): Promise<Cuenta> {
+  if (datos.usuarioResponsablesIds.length === 0) {
+    throw new Error("La cuenta necesita al menos un responsable.");
+  }
   const cuenta: Cuenta = {
     id: randomUUID(),
     nombre: datos.nombre.trim(),
@@ -201,6 +204,12 @@ export async function actualizarCuenta(
   const cuentas = await listarCuentas();
   const actual = cuentas.find((c) => c.id === id);
   if (!actual) throw new Error("Cuenta no encontrada.");
+  if (
+    cambios.usuarioResponsablesIds !== undefined &&
+    cambios.usuarioResponsablesIds.length === 0
+  ) {
+    throw new Error("La cuenta necesita al menos un responsable.");
+  }
   const actualizada: Cuenta = { ...actual, ...cambios };
   await actualizarFilaPorId(TABS.CUENTAS, id, [
     actualizada.id,
