@@ -68,24 +68,27 @@ export default async function DashboardPage() {
 
       <section>
         <h2 className="text-lg font-semibold text-madera-800 mb-3">
-          Saldo por usuario responsable
+          Saldo por responsable
         </h2>
         <p className="text-sm text-madera-500 mb-3">
-          Suma de las cuentas de las que cada usuario es responsable.
+          Las cuentas con un solo responsable suman a su saldo individual.
+          Las que tienen varios responsables en conjunto forman su propio
+          grupo (ej. "Leticia - Pablo"), sin mezclarse con los saldos
+          individuales de cada uno.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {resumen.saldosPorUsuario.map(({ usuario, porMoneda }) => (
-            <div key={usuario.id} className="card">
-              <p className="font-semibold text-madera-800">
-                {usuario.nombre}
-              </p>
-              {Object.keys(porMoneda).length === 0 ? (
-                <p className="text-sm text-madera-400 mt-1">
-                  Sin cuentas asignadas.
+        {resumen.saldosPorGrupoResponsable.length === 0 ? (
+          <p className="text-sm text-madera-400">
+            Todavía no hay cuentas con responsables asignados.
+          </p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {resumen.saldosPorGrupoResponsable.map((grupo) => (
+              <div key={grupo.usuarioIds.join("|")} className="card">
+                <p className="font-semibold text-madera-800">
+                  {grupo.etiqueta}
                 </p>
-              ) : (
                 <ul className="mt-2 space-y-1 text-sm">
-                  {Object.entries(porMoneda).map(([moneda, saldo]) => (
+                  {Object.entries(grupo.porMoneda).map(([moneda, saldo]) => (
                     <li key={moneda} className="flex justify-between">
                       <span className="text-madera-500">{moneda}</span>
                       <span className="font-medium">
@@ -94,10 +97,10 @@ export default async function DashboardPage() {
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

@@ -63,9 +63,13 @@ export interface SaldoCuenta {
   saldo: number;
 }
 
-export interface SaldoUsuario {
-  usuario: Usuario;
-  // saldo de las cuentas de las que ese usuario es responsable, agrupado por moneda
+/** Saldo agrupado por la combinación exacta de responsables de una o más
+ *  cuentas (ej: cuentas de "Leticia" sola, cuentas de "Pablo" solo, y por
+ *  separado las cuentas donde ambos son responsables en conjunto). */
+export interface SaldoGrupoResponsables {
+  usuarioIds: string[];
+  /** Nombres de los responsables unidos, ej: "Leticia - Pablo". */
+  etiqueta: string;
   porMoneda: Record<string, number>;
 }
 
@@ -77,7 +81,7 @@ export interface ArqueoMoneda {
 
 export interface Resumen {
   saldosPorCuenta: SaldoCuenta[];
-  saldosPorUsuario: SaldoUsuario[];
+  saldosPorGrupoResponsable: SaldoGrupoResponsables[];
   arqueoPorMoneda: ArqueoMoneda[];
 }
 

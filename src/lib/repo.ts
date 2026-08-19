@@ -18,7 +18,7 @@ import type {
   Resumen,
   Rol,
   SaldoCuenta,
-  SaldoUsuario,
+  SaldoGrupoResponsables,
   TipoCuenta,
   TipoMovimiento,
   Usuario,
@@ -464,19 +464,40 @@ export function calcularSaldosPorCuenta(
   }));
 }
 
-export function calcularSaldosPorUsuario(
+/** Agrupa el saldo por la combinación exacta de responsables de cada
+ *  cuenta: una cuenta con un solo responsable suma al grupo de esa persona
+ *  sola; una cuenta con varios responsables arma su propio grupo (ej.
+ *  "Leticia - Pablo") en vez de sumarse a los saldos individuales de cada
+ *  uno. Las cuentas sin responsable asignado no entran en esta lista. */
+export function calcularSaldosPorGrupoResponsable(
   usuarios: Usuario[],
   saldosPorCuenta: SaldoCuenta[]
-): SaldoUsuario[] {
-  return usuarios.map((usuario) => {
-    const porMoneda: Record<string, number> = {};
-    for (const { cuenta, saldo } of saldosPorCuenta) {
-      if (cuenta.usuarioResponsablesIds.includes(usuario.id)) {
-        porMoneda[cuenta.moneda] = (porMoneda[cuenta.moneda] ?? 0) + saldo;
-      }
+): SaldoGrupoResponsables[] {
+  const nombrePorId = new Map(usuarios.map((u) => [u.id, u.nombre]));
+  const grupos = new Map<string, SaldoGrupoResponsables>();
+
+  for (const { cuenta, saldo } of saldosPorCuenta) {
+    if (cuenta.usuarioResponsablesIds.length === 0) continue;
+    const idsOrdenados = [...cuenta.usuarioResponsablesIds].sort((a, b) =>
+      (nombrePorId.get(a) ?? "").localeCompare(nombrePorId.get(b) ?? "")
+    );
+    const clave = idsOrdenados.join("|");
+    if (!grupos.has(clave)) {
+      grupos.set(clave, {
+        usuarioIds: idsOrdenados,
+        etiqueta: idsOrdenados
+          .map((id) => nombrePorId.get(id) ?? "?")
+          .join(" - "),
+        porMoneda: {},
+      });
     }
-    return { usuario, porMoneda };
-  });
+    const grupo = grupos.get(clave)!;
+    grupo.porMoneda[cuenta.moneda] = (grupo.porMoneda[cuenta.moneda] ?? 0) + saldo;
+  }
+
+  return Array.from(grupos.values()).sort((a, b) =>
+    a.etiqueta.localeCompare(b.etiqueta)
+  );
 }
 
 export function calcularArqueoPorMoneda(
@@ -505,7 +526,10 @@ export async function obtenerResumen(): Promise<Resumen> {
     listarUsuarios(),
   ]);
   const saldosPorCuenta = calcularSaldosPorCuenta(cuentas, movimientos);
-  const saldosPorUsuario = calcularSaldosPorUsuario(usuarios, saldosPorCuenta);
+  const saldosPorGrupoResponsable = calcularSaldosPorGrupoResponsable(
+    usuarios,
+    saldosPorCuenta
+  );
   const arqueoPorMoneda = calcularArqueoPorMoneda(saldosPorCuenta);
-  return { saldosPorCuenta, saldosPorUsuario, arqueoPorMoneda };
+  return { saldosPorCuenta, saldosPorGrupoResponsable, arqueoPorMoneda };
 }
