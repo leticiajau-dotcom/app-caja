@@ -1,14 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  MONEDAS_SUGERIDAS,
-  TIPOS_CUENTA,
-  formatMoney,
-  tipoCuentaLabel,
-} from "@/lib/format";
+import { MONEDAS_SUGERIDAS, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
-import type { Cuenta, TipoCuenta } from "@/lib/types";
+import type { Cuenta } from "@/lib/types";
 
 interface UsuarioPublico {
   id: string;
@@ -60,8 +55,6 @@ export default function CuentasPage() {
   const [error, setError] = useState("");
 
   const [nombre, setNombre] = useState("");
-  const [tipo, setTipo] = useState<TipoCuenta>("efectivo");
-  const [tipoPersonalizado, setTipoPersonalizado] = useState("");
   const [monedaSeleccion, setMonedaSeleccion] = useState("ARS");
   const [monedaLibre, setMonedaLibre] = useState("");
   const [responsables, setResponsables] = useState<string[]>([]);
@@ -107,8 +100,6 @@ export default function CuentasPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre,
-          tipo,
-          tipoPersonalizado: tipo === "otra" ? tipoPersonalizado : null,
           moneda,
           usuarioResponsablesIds: responsables,
           saldoInicial,
@@ -117,7 +108,6 @@ export default function CuentasPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setNombre("");
-      setTipoPersonalizado("");
       setResponsables([]);
       setSaldoInicial(0);
       await cargar();
@@ -183,32 +173,6 @@ export default function CuentasPage() {
             />
           </div>
           <div>
-            <label className="label">Tipo</label>
-            <select
-              className="input"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as TipoCuenta)}
-            >
-              {TIPOS_CUENTA.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {tipo === "otra" && (
-            <div>
-              <label className="label">Nombre del tipo</label>
-              <input
-                className="input"
-                placeholder="Ej: Cheque, Inversión, Caja de ahorro..."
-                value={tipoPersonalizado}
-                onChange={(e) => setTipoPersonalizado(e.target.value)}
-                required
-              />
-            </div>
-          )}
-          <div>
             <label className="label">Moneda</label>
             <select
               className="input"
@@ -273,7 +237,6 @@ export default function CuentasPage() {
             <thead>
               <tr className="text-left text-madera-500 border-b border-madera-100">
                 <th className="py-2 pr-4">Nombre</th>
-                <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4">Moneda</th>
                 <th className="py-2 pr-4">Responsables</th>
                 <th className="py-2 pr-4 text-right">Saldo inicial</th>
@@ -285,7 +248,6 @@ export default function CuentasPage() {
               {cuentas.map((c) => (
                 <tr key={c.id} className="border-b border-madera-50 last:border-0 align-top">
                   <td className="py-2 pr-4">{c.nombre}</td>
-                  <td className="py-2 pr-4">{tipoCuentaLabel(c)}</td>
                   <td className="py-2 pr-4">{c.moneda}</td>
                   <td className="py-2 pr-4 min-w-[220px]">
                     {editandoId === c.id ? (
@@ -361,7 +323,7 @@ export default function CuentasPage() {
               ))}
               {cuentas.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-4 text-center text-madera-400">
+                  <td colSpan={6} className="py-4 text-center text-madera-400">
                     No hay cuentas todavía.
                   </td>
                 </tr>

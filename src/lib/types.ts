@@ -11,15 +11,9 @@ export interface Usuario {
   creadoEn: string;
 }
 
-/** Tipo de cuenta. "otra" permite un nombre libre en tipoPersonalizado. */
-export type TipoCuenta = "efectivo" | "banco" | "billetera_virtual" | "otra";
-
 export interface Cuenta {
   id: string;
   nombre: string;
-  tipo: TipoCuenta;
-  /** Solo tiene sentido cuando tipo === "otra": nombre libre elegido por el usuario. */
-  tipoPersonalizado: string | null;
   moneda: string; // ej: ARS, USD, EUR
   /** Quiénes son responsables de la cuenta (pueden cargarle movimientos).
    *  Vacío = sin responsables asignados (solo un admin puede operarla). */

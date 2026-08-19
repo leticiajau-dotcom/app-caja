@@ -1,5 +1,3 @@
-import type { Cuenta, TipoCuenta } from "./types";
-
 export function formatMoney(valor: number, moneda: string) {
   try {
     return new Intl.NumberFormat("es-AR", {
@@ -22,27 +20,6 @@ export function formatFecha(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("es-AR");
-}
-
-export const TIPOS_CUENTA: { value: TipoCuenta; label: string }[] = [
-  { value: "efectivo", label: "Efectivo" },
-  { value: "banco", label: "Cuenta bancaria" },
-  { value: "billetera_virtual", label: "Billetera virtual" },
-  { value: "otra", label: "Otra" },
-];
-
-/** Nombre a mostrar para el tipo de una cuenta, respetando el nombre libre
- *  cuando el tipo es "otra", y con un texto razonable para cuentas viejas
- *  que hayan quedado con el tipo "dolares" (ya no se puede elegir, pero
- *  puede existir en datos cargados antes de este cambio). */
-export function tipoCuentaLabel(cuenta: Pick<Cuenta, "tipo" | "tipoPersonalizado">) {
-  if (cuenta.tipo === "otra") {
-    return cuenta.tipoPersonalizado?.trim() || "Otra";
-  }
-  if ((cuenta.tipo as string) === "dolares") {
-    return "Cuenta en dólares";
-  }
-  return TIPOS_CUENTA.find((t) => t.value === cuenta.tipo)?.label ?? cuenta.tipo;
 }
 
 export const MONEDAS_SUGERIDAS = [

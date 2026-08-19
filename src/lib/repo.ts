@@ -19,7 +19,6 @@ import type {
   Rol,
   SaldoCuenta,
   SaldoGrupoResponsables,
-  TipoCuenta,
   TipoMovimiento,
   Usuario,
 } from "./types";
@@ -128,8 +127,6 @@ function rowToCuenta(r: Record<string, string>): Cuenta {
   return {
     id: r.id,
     nombre: r.nombre,
-    tipo: (r.tipo as TipoCuenta) || "otra",
-    tipoPersonalizado: r.tipoPersonalizado || null,
     moneda: r.moneda || "ARS",
     usuarioResponsablesIds: (r.usuarioResponsablesIds || "")
       .split(",")
@@ -149,8 +146,6 @@ export async function listarCuentas(soloActivas = false): Promise<Cuenta[]> {
 
 export async function crearCuenta(datos: {
   nombre: string;
-  tipo: TipoCuenta;
-  tipoPersonalizado?: string | null;
   moneda: string;
   usuarioResponsablesIds: string[];
   saldoInicial: number;
@@ -161,9 +156,6 @@ export async function crearCuenta(datos: {
   const cuenta: Cuenta = {
     id: randomUUID(),
     nombre: datos.nombre.trim(),
-    tipo: datos.tipo,
-    tipoPersonalizado:
-      datos.tipo === "otra" ? (datos.tipoPersonalizado?.trim() || null) : null,
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
     usuarioResponsablesIds: datos.usuarioResponsablesIds,
     saldoInicial: datos.saldoInicial || 0,
@@ -173,8 +165,8 @@ export async function crearCuenta(datos: {
   await agregarFila(TABS.CUENTAS, [
     cuenta.id,
     cuenta.nombre,
-    cuenta.tipo,
-    cuenta.tipoPersonalizado ?? "",
+    "", // tipo: ya no se usa, se deja vacío para no correr las columnas siguientes
+    "", // tipoPersonalizado: ídem
     cuenta.moneda,
     cuenta.usuarioResponsablesIds.join(","),
     cuenta.saldoInicial,
@@ -203,15 +195,7 @@ export async function crearCuenta(datos: {
 export async function actualizarCuenta(
   id: string,
   cambios: Partial<
-    Pick<
-      Cuenta,
-      | "nombre"
-      | "tipo"
-      | "tipoPersonalizado"
-      | "moneda"
-      | "usuarioResponsablesIds"
-      | "activa"
-    >
+    Pick<Cuenta, "nombre" | "moneda" | "usuarioResponsablesIds" | "activa">
   >
 ) {
   const cuentas = await listarCuentas();
@@ -221,8 +205,8 @@ export async function actualizarCuenta(
   await actualizarFilaPorId(TABS.CUENTAS, id, [
     actualizada.id,
     actualizada.nombre,
-    actualizada.tipo,
-    actualizada.tipoPersonalizado ?? "",
+    "", // tipo: ya no se usa
+    "", // tipoPersonalizado: ídem
     actualizada.moneda,
     actualizada.usuarioResponsablesIds.join(","),
     actualizada.saldoInicial,

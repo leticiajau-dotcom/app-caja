@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/internalSession";
 import { obtenerResumen } from "@/lib/repo";
-import { formatMoney, tipoCuentaLabel } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import ArqueoCards from "@/components/ArqueoCards";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,6 @@ export default async function DashboardPage() {
             <thead>
               <tr className="text-left text-madera-500 border-b border-madera-100">
                 <th className="py-2 pr-4">Cuenta</th>
-                <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4">Moneda</th>
                 <th className="py-2 pr-4 text-right">Saldo</th>
               </tr>
@@ -47,7 +46,6 @@ export default async function DashboardPage() {
               {resumen.saldosPorCuenta.map(({ cuenta, saldo }) => (
                 <tr key={cuenta.id} className="border-b border-madera-50 last:border-0">
                   <td className="py-2 pr-4">{cuenta.nombre}</td>
-                  <td className="py-2 pr-4">{tipoCuentaLabel(cuenta)}</td>
                   <td className="py-2 pr-4">{cuenta.moneda}</td>
                   <td className="py-2 pr-4 text-right font-medium">
                     {formatMoney(saldo, cuenta.moneda)}
@@ -56,7 +54,7 @@ export default async function DashboardPage() {
               ))}
               {resumen.saldosPorCuenta.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-madera-400">
+                  <td colSpan={3} className="py-4 text-center text-madera-400">
                     No hay cuentas todavía.
                   </td>
                 </tr>
