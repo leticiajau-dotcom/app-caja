@@ -11,6 +11,14 @@ interface UsuarioPublico {
   nombre: string;
 }
 
+// Misma paleta que los avatares de "Resumen" en mobile, para que el
+// ícono con la inicial se vea igual acá.
+const PALETA_AVATAR = [
+  "oklch(70% 0.16 35)",
+  "oklch(72% 0.14 85)",
+  "oklch(55% 0.135 175)",
+];
+
 export default function RetirosPage() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
@@ -101,21 +109,18 @@ export default function RetirosPage() {
           ← Volver a Cuentas
         </Link>
         <h1 className="text-2xl font-bold text-madera-800 mt-1">Retiros</h1>
-        <p className="text-madera-600">
-          Retiros registrados a nombre de administradores y socios, con el
-          total retirado por cada uno.
-        </p>
       </div>
 
       {cargando ? (
         <p className="text-madera-500 text-sm">Cargando...</p>
       ) : (
         <>
-          <div className="card overflow-x-auto">
+          <div className="card">
             <h2 className="font-semibold text-lg mb-4">Retiros registrados</h2>
+            <div className="max-h-[420px] overflow-y-auto overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-madera-500 border-b border-madera-100">
+                <tr className="text-left text-madera-500 border-b border-madera-100 sticky top-0 bg-white">
                   <th className="py-2 pr-4">Fecha</th>
                   <th className="py-2 pr-4">Usuario</th>
                   <th className="py-2 pr-4">Cuenta</th>
@@ -161,6 +166,7 @@ export default function RetirosPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="card">
@@ -170,20 +176,31 @@ export default function RetirosPage() {
                 Todavía no hay retiros para totalizar.
               </p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {totalesPorUsuario.map((t) => (
-                  <div key={t.usuarioId} className="card">
-                    <p className="font-semibold text-madera-800">{t.nombre}</p>
-                    <ul className="mt-2 space-y-1 text-sm">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {totalesPorUsuario.map((t, i) => (
+                  <div
+                    key={t.usuarioId}
+                    className="card py-2 px-3 flex items-center gap-2.5"
+                  >
+                    <div
+                      className="h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm text-white shrink-0"
+                      style={{ backgroundColor: PALETA_AVATAR[i % PALETA_AVATAR.length] }}
+                    >
+                      {t.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <p className="font-semibold text-madera-800 text-sm truncate">
+                      {t.nombre}
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 ml-auto text-sm">
                       {t.porMoneda.map(([moneda, total]) => (
-                        <li key={moneda} className="flex justify-between">
-                          <span className="text-madera-500">{moneda}</span>
+                        <span key={moneda} className="whitespace-nowrap">
+                          <span className="text-madera-500 text-xs">{moneda}</span>{" "}
                           <span className="font-medium">
                             {formatMoney(total, moneda)}
                           </span>
-                        </li>
+                        </span>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 ))}
               </div>
