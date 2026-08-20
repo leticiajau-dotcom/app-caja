@@ -29,3 +29,72 @@ body {
 .label {
   @apply block text-sm font-medium text-madera-800 mb-1;
 }
+
+/* Rediseño mobile: por debajo de md (768px) reutilizamos los mismos
+ * elementos (.card, .btn-*, .input, .label, fondo de body) pero con la
+ * paleta y tipografía nueva, para que Movimientos/Cuentas/Usuarios se vean
+ * parte de la misma app que el nuevo Resumen, sin duplicar el marcado de
+ * cada pantalla. Desktop (md y superior) no se toca. */
+@media (max-width: 767px) {
+  body {
+    background-color: #f4efe4; /* caja-bg */
+    color: oklch(24% 0.03 250); /* caja-ink */
+    font-family: var(--font-manrope), system-ui, sans-serif;
+  }
+
+  .card {
+    border-radius: 1.125rem; /* 18px */
+    border-color: transparent;
+    box-shadow: 0 2px 10px rgba(30, 25, 15, 0.05);
+  }
+
+  .btn-primary {
+    background-color: oklch(55% 0.135 175); /* caja-primary */
+  }
+  .btn-primary:hover {
+    background-color: oklch(50% 0.135 175);
+  }
+
+  .btn-secondary {
+    background-color: #ffffff;
+    color: oklch(24% 0.03 250);
+    border-color: oklch(93% 0.01 250); /* caja-divider */
+  }
+  .btn-secondary:hover {
+    background-color: oklch(97% 0.01 250);
+  }
+
+  .input {
+    border-color: oklch(93% 0.01 250);
+    border-radius: 0.75rem;
+  }
+  .input:focus {
+    --tw-ring-color: oklch(55% 0.135 175 / 0.4);
+  }
+
+  .label {
+    color: oklch(24% 0.03 250);
+  }
+
+  /* Títulos, textos secundarios y separadores de tabla: mismo mapeo que
+   * arriba pero para las clases de color/borde de Tailwind usadas directo
+   * en cada pantalla (encabezados, subtítulos, columnas de tabla), para no
+   * tener que retocar el marcado de cada página una por una. */
+  .text-madera-800,
+  .text-madera-700 {
+    color: oklch(24% 0.03 250); /* caja-ink */
+  }
+  .text-madera-600,
+  .text-madera-500,
+  .text-madera-400 {
+    color: oklch(52% 0.03 250); /* caja-muted */
+  }
+  .border-madera-50,
+  .border-madera-100 {
+    border-color: oklch(93% 0.01 250); /* caja-divider */
+  }
+  .bg-madera-50,
+  .bg-madera-100 {
+    background-color: oklch(96% 0.01 250);
+  }
+}

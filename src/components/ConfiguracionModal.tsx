@@ -64,19 +64,19 @@ export default function ConfiguracionModal({
         className="card w-full max-w-md space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg text-madera-800">
+          <h2 className="font-semibold text-lg text-gray-900">
             Nombre y logo
           </h2>
           <button
             type="button"
-            className="text-madera-400 hover:text-madera-700 text-xl leading-none"
+            className="text-gray-400 hover:text-gray-700 text-xl leading-none"
             onClick={onCerrar}
             aria-label="Cerrar"
           >
             ×
           </button>
         </div>
-        <p className="text-sm text-madera-600">
+        <p className="text-sm text-gray-600">
           Se muestran arriba de todas las pantallas, incluida la de login.
         </p>
 
@@ -94,7 +94,7 @@ export default function ConfiguracionModal({
         <div>
           <label className="label">Logo</label>
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-xl border border-madera-100 bg-madera-50 flex items-center justify-center overflow-hidden">
+            <div className="h-16 w-16 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
               {logoDataUri ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -128,7 +128,7 @@ export default function ConfiguracionModal({
               )}
             </div>
           </div>
-          <p className="text-xs text-madera-400 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             Imagen chica (ideal: cuadrada, menos de 200 KB). Se guarda dentro
             de tu propia planilla, no se sube a ningún otro lado.
           </p>
