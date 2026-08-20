@@ -371,9 +371,9 @@ export default function CuentasPage() {
         )}
       </div>
 
-      <div className="flex justify-end">
-        <Link href="/retiros" className="btn-secondary">
-          Retiros
+      <div className="flex justify-start">
+        <Link href="/retiros" className="btn-primary">
+          Consulta retiros
         </Link>
       </div>
     </div>

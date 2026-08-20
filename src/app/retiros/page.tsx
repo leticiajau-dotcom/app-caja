@@ -178,20 +178,21 @@ export default function RetirosPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {totalesPorUsuario.map((t, i) => (
-                  <div
-                    key={t.usuarioId}
-                    className="card py-2 px-3 flex items-center gap-2.5"
-                  >
-                    <div
-                      className="h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm text-white shrink-0"
-                      style={{ backgroundColor: PALETA_AVATAR[i % PALETA_AVATAR.length] }}
-                    >
-                      {t.nombre.charAt(0).toUpperCase()}
+                  <div key={t.usuarioId} className="card py-2 px-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm text-white shrink-0"
+                        style={{
+                          backgroundColor: PALETA_AVATAR[i % PALETA_AVATAR.length],
+                        }}
+                      >
+                        {t.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <p className="font-semibold text-madera-800 text-sm">
+                        {t.nombre}
+                      </p>
                     </div>
-                    <p className="font-semibold text-madera-800 text-sm truncate">
-                      {t.nombre}
-                    </p>
-                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 ml-auto text-sm">
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 pl-[42px] text-sm">
                       {t.porMoneda.map(([moneda, total]) => (
                         <span key={moneda} className="whitespace-nowrap">
                           <span className="text-madera-500 text-xs">{moneda}</span>{" "}
