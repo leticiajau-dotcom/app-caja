@@ -71,7 +71,16 @@ export const TABS = {
 } as const;
 
 export const HEADERS = {
-  [TABS.USUARIOS]: ["id", "nombre", "pinHash", "rol", "activo", "creadoEn"],
+  [TABS.USUARIOS]: [
+    "id",
+    "nombre",
+    "pinHash",
+    "rol",
+    "activo",
+    "creadoEn",
+    "intentosFallidos",
+    "bloqueadoHasta",
+  ],
   [TABS.CUENTAS]: [
     "id",
     "nombre",

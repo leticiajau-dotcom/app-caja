@@ -10,6 +10,7 @@ import {
   listarPestañasMovimientos,
   obtenerPestañaMovimientosParaEscribir,
 } from "./googleSheets";
+import { ApiError } from "./guards";
 import type {
   ArqueoMoneda,
   Configuracion,
@@ -38,7 +39,27 @@ function rowToUsuario(r: Record<string, string>): Usuario {
     rol: (r.rol as Rol) || "empleado",
     activo: toBool(r.activo),
     creadoEn: r.creadoEn,
+    intentosFallidos: toNum(r.intentosFallidos),
+    bloqueadoHasta: r.bloqueadoHasta || null,
   };
+}
+
+// Cantidad de intentos de PIN incorrectos permitidos antes de bloquear al
+// usuario, y minutos que dura el bloqueo una vez alcanzado ese límite.
+const MAX_INTENTOS_FALLIDOS = 3;
+const MINUTOS_BLOQUEO = 15;
+
+function filaUsuario(u: Usuario): string[] {
+  return [
+    u.id,
+    u.nombre,
+    u.pinHash,
+    u.rol,
+    String(u.activo),
+    u.creadoEn,
+    String(u.intentosFallidos),
+    u.bloqueadoHasta ?? "",
+  ];
 }
 
 const CLAVE_MIGRACION_ROL_SOCIO = "migracionRolSocioHecha";
@@ -64,6 +85,8 @@ async function migrarRolEmpleadoASocioSiHaceFalta() {
         "socio",
         r.activo,
         r.creadoEn,
+        r.intentosFallidos || "0",
+        r.bloqueadoHasta || "",
       ]);
     }
   }
@@ -103,15 +126,10 @@ export async function crearUsuario(datos: {
     rol: datos.rol,
     activo: true,
     creadoEn: new Date().toISOString(),
+    intentosFallidos: 0,
+    bloqueadoHasta: null,
   };
-  await agregarFila(TABS.USUARIOS, [
-    usuario.id,
-    usuario.nombre,
-    usuario.pinHash,
-    usuario.rol,
-    String(usuario.activo),
-    usuario.creadoEn,
-  ]);
+  await agregarFila(TABS.USUARIOS, filaUsuario(usuario));
   return usuario;
 }
 
@@ -131,22 +149,63 @@ export async function actualizarUsuario(
     activo: cambios.activo ?? actual.activo,
     pinHash: cambios.pin ? bcrypt.hashSync(cambios.pin, 10) : actual.pinHash,
   };
-  await actualizarFilaPorId(TABS.USUARIOS, id, [
-    actualizado.id,
-    actualizado.nombre,
-    actualizado.pinHash,
-    actualizado.rol,
-    String(actualizado.activo),
-    actualizado.creadoEn,
-  ]);
+  await actualizarFilaPorId(TABS.USUARIOS, id, filaUsuario(actualizado));
   return actualizado;
 }
 
 export async function verificarPin(nombre: string, pin: string) {
   const usuario = await buscarUsuarioPorNombre(nombre);
   if (!usuario || !usuario.activo) return null;
+
+  if (usuario.bloqueadoHasta) {
+    const bloqueadoHastaMs = new Date(usuario.bloqueadoHasta).getTime();
+    if (bloqueadoHastaMs > Date.now()) {
+      const minutosRestantes = Math.ceil(
+        (bloqueadoHastaMs - Date.now()) / 60000
+      );
+      throw new ApiError(
+        `Usuario bloqueado por intentos fallidos. Probá de nuevo en ${minutosRestantes} minuto${
+          minutosRestantes === 1 ? "" : "s"
+        }.`,
+        429
+      );
+    }
+  }
+
   const ok = bcrypt.compareSync(pin, usuario.pinHash);
-  return ok ? usuario : null;
+
+  if (ok) {
+    if (usuario.intentosFallidos > 0 || usuario.bloqueadoHasta) {
+      const actualizado: Usuario = {
+        ...usuario,
+        intentosFallidos: 0,
+        bloqueadoHasta: null,
+      };
+      await actualizarFilaPorId(TABS.USUARIOS, usuario.id, filaUsuario(actualizado));
+      return actualizado;
+    }
+    return usuario;
+  }
+
+  const intentosFallidos = usuario.intentosFallidos + 1;
+  const seBloquea = intentosFallidos >= MAX_INTENTOS_FALLIDOS;
+  const actualizado: Usuario = {
+    ...usuario,
+    intentosFallidos: seBloquea ? 0 : intentosFallidos,
+    bloqueadoHasta: seBloquea
+      ? new Date(Date.now() + MINUTOS_BLOQUEO * 60000).toISOString()
+      : null,
+  };
+  await actualizarFilaPorId(TABS.USUARIOS, usuario.id, filaUsuario(actualizado));
+
+  if (seBloquea) {
+    throw new ApiError(
+      `Demasiados intentos fallidos. Usuario bloqueado por ${MINUTOS_BLOQUEO} minutos.`,
+      429
+    );
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------

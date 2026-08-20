@@ -16,6 +16,8 @@ export interface Usuario {
   rol: Rol;
   activo: boolean;
   creadoEn: string;
+  intentosFallidos: number;
+  bloqueadoHasta: string | null;
 }
 
 export interface Cuenta {
