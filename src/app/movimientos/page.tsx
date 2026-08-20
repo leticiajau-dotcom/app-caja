@@ -18,26 +18,44 @@ function hoyISO() {
 const VERDE_INGRESO = "oklch(52% 0.15 155)";
 const ROJO_EGRESO = "oklch(56% 0.18 25)";
 
+function FlechaGruesa({
+  color,
+  direccion,
+}: {
+  color: string;
+  direccion: "arriba" | "abajo";
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke={color}
+      strokeWidth="4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {direccion === "arriba" ? (
+        <path d="M12 19V5M5 12l7-7 7 7" />
+      ) : (
+        <path d="M12 5v14M5 12l7 7 7-7" />
+      )}
+    </svg>
+  );
+}
+
 // Versión en celular de la columna "Tipo": flechas en vez de palabra, para
 // ahorrar espacio (ingreso = flecha verde arriba, egreso = flecha roja
 // abajo, transferencia = las dos juntas).
 function IconoTipo({ tipo }: { tipo: TipoMovimiento }) {
-  const arriba = (
-    <span aria-hidden="true" style={{ color: VERDE_INGRESO }} className="font-bold">
-      ↑
-    </span>
-  );
-  const abajo = (
-    <span aria-hidden="true" style={{ color: ROJO_EGRESO }} className="font-bold">
-      ↓
-    </span>
-  );
   const etiqueta =
     tipo === "ingreso" ? "Ingreso" : tipo === "egreso" ? "Egreso" : "Transferencia";
   return (
-    <span aria-label={etiqueta} className="inline-flex items-center gap-0.5 text-base">
-      {tipo !== "egreso" && arriba}
-      {tipo !== "ingreso" && abajo}
+    <span aria-label={etiqueta} className="inline-flex items-center gap-0.5">
+      {tipo !== "egreso" && <FlechaGruesa color={VERDE_INGRESO} direccion="arriba" />}
+      {tipo !== "ingreso" && <FlechaGruesa color={ROJO_EGRESO} direccion="abajo" />}
     </span>
   );
 }
@@ -355,11 +373,6 @@ export default function MovimientosPage() {
                       <span className="md:hidden">
                         <IconoTipo tipo={m.tipo} />
                       </span>
-                      {m.esAperturaSaldo && (
-                        <span className="ml-1 text-xs text-madera-400">
-                          (apertura)
-                        </span>
-                      )}
                     </td>
                     <td className="py-2 pr-4">
                       {cuenta?.nombre ?? "—"}
