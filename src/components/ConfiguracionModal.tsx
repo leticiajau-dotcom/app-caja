@@ -1,31 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { Configuracion } from "@/lib/types";
 
 const TAMANO_MAX_BYTES = 200 * 1024; // 200 KB, de sobra para un ícono/logo chico
 
-export default function ConfiguracionPage() {
-  const [config, setConfig] = useState<Configuracion | null>(null);
-  const [sinPermiso, setSinPermiso] = useState(false);
-  const [cargando, setCargando] = useState(true);
-  const [nombreApp, setNombreApp] = useState("");
-  const [logoDataUri, setLogoDataUri] = useState("");
+export default function ConfiguracionModal({
+  config,
+  onCerrar,
+  onGuardado,
+}: {
+  config: Configuracion;
+  onCerrar: () => void;
+  onGuardado: (config: Configuracion) => void;
+}) {
+  const [nombreApp, setNombreApp] = useState(config.nombreApp);
+  const [logoDataUri, setLogoDataUri] = useState(config.logoDataUri);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  const [ok, setOk] = useState(false);
   const inputArchivoRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((d) => {
-        setConfig(d.config);
-        setNombreApp(d.config?.nombreApp ?? "");
-        setLogoDataUri(d.config?.logoDataUri ?? "");
-      })
-      .finally(() => setCargando(false));
-  }, []);
 
   function onElegirArchivo(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
@@ -43,7 +36,6 @@ export default function ConfiguracionPage() {
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setOk(false);
     setGuardando(true);
     try {
       const res = await fetch("/api/config", {
@@ -52,13 +44,8 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({ nombreApp, logoDataUri }),
       });
       const data = await res.json();
-      if (res.status === 403) {
-        setSinPermiso(true);
-        return;
-      }
       if (!res.ok) throw new Error(data.error);
-      setConfig(data.config);
-      setOk(true);
+      onGuardado(data.config);
     } catch (e: any) {
       setError(e.message ?? "Error inesperado.");
     } finally {
@@ -66,31 +53,33 @@ export default function ConfiguracionPage() {
     }
   }
 
-  if (sinPermiso) {
-    return (
-      <div className="card max-w-md mx-auto mt-10 text-center">
-        <p className="text-madera-700">
-          Solo un administrador puede cambiar la configuración.
-        </p>
-      </div>
-    );
-  }
-
-  if (cargando) {
-    return <p className="text-madera-500 text-sm">Cargando...</p>;
-  }
-
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-madera-800">Configuración</h1>
-        <p className="text-madera-600">
-          Personalizá el nombre y el logo que se muestran arriba de todas las
-          pantallas.
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+      onClick={onCerrar}
+    >
+      <form
+        onSubmit={guardar}
+        onClick={(e) => e.stopPropagation()}
+        className="card w-full max-w-md space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-lg text-madera-800">
+            Nombre y logo
+          </h2>
+          <button
+            type="button"
+            className="text-madera-400 hover:text-madera-700 text-xl leading-none"
+            onClick={onCerrar}
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+        <p className="text-sm text-madera-600">
+          Se muestran arriba de todas las pantallas, incluida la de login.
         </p>
-      </div>
 
-      <form onSubmit={guardar} className="card space-y-4">
         <div>
           <label className="label">Nombre de la app</label>
           <input
@@ -108,7 +97,11 @@ export default function ConfiguracionPage() {
             <div className="h-16 w-16 rounded-xl border border-madera-100 bg-madera-50 flex items-center justify-center overflow-hidden">
               {logoDataUri ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoDataUri} alt="" className="h-full w-full object-contain" />
+                <img
+                  src={logoDataUri}
+                  alt=""
+                  className="h-full w-full object-contain"
+                />
               ) : (
                 <span className="text-2xl">🪵</span>
               )}
@@ -142,11 +135,15 @@ export default function ConfiguracionPage() {
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {ok && <p className="text-sm text-green-700">Guardado.</p>}
 
-        <button className="btn-primary" disabled={guardando}>
-          {guardando ? "Guardando..." : "Guardar cambios"}
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-primary" disabled={guardando}>
+            {guardando ? "Guardando..." : "Guardar cambios"}
+          </button>
+          <button type="button" className="btn-secondary" onClick={onCerrar}>
+            Cancelar
+          </button>
+        </div>
       </form>
     </div>
   );
