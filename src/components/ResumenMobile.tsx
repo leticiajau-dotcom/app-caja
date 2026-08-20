@@ -22,6 +22,17 @@ function claveGrupo(usuarioIds: string[]) {
   return usuarioIds.join("|") || "sin-responsable";
 }
 
+/** Las tarjetas de "Total por moneda" son angostas (2 por fila) y algunos
+ *  montos (sobre todo en ARS, con separador de miles) no entran con el
+ *  tamaño de letra base. Achicamos la fuente a medida que el texto es más
+ *  largo para que siempre quede contenido dentro de la tarjeta. */
+function tamañoTotalArqueo(texto: string) {
+  if (texto.length > 16) return "15px";
+  if (texto.length > 13) return "17px";
+  if (texto.length > 10) return "19px";
+  return "22px";
+}
+
 export default function ResumenMobile({
   resumen,
   nombreUsuario,
@@ -63,27 +74,33 @@ export default function ResumenMobile({
 
       {resumen.arqueoPorMoneda.length > 0 && (
         <div className="grid grid-cols-2 gap-2.5 mb-[22px]">
-          {resumen.arqueoPorMoneda.map((a, i) => (
-            <div
-              key={a.moneda}
-              className="rounded-[20px] p-4"
-              style={{
-                backgroundColor: COLOR_TARJETAS[i % COLOR_TARJETAS.length],
-                color: TEXTO_TARJETAS[i % TEXTO_TARJETAS.length],
-                boxShadow: `0 8px 20px -8px ${COLOR_TARJETAS[i % COLOR_TARJETAS.length]}`,
-              }}
-            >
+          {resumen.arqueoPorMoneda.map((a, i) => {
+            const texto = formatMoney(a.total, a.moneda);
+            return (
               <div
-                className="text-[11px] font-bold uppercase"
-                style={{ opacity: i % TEXTO_TARJETAS.length === 1 ? 0.75 : 0.85, letterSpacing: "0.4px" }}
+                key={a.moneda}
+                className="rounded-[20px] p-4 min-w-0"
+                style={{
+                  backgroundColor: COLOR_TARJETAS[i % COLOR_TARJETAS.length],
+                  color: TEXTO_TARJETAS[i % TEXTO_TARJETAS.length],
+                  boxShadow: `0 8px 20px -8px ${COLOR_TARJETAS[i % COLOR_TARJETAS.length]}`,
+                }}
               >
-                Total {a.moneda}
+                <div
+                  className="text-[11px] font-bold uppercase truncate"
+                  style={{ opacity: i % TEXTO_TARJETAS.length === 1 ? 0.75 : 0.85, letterSpacing: "0.4px" }}
+                >
+                  Total {a.moneda}
+                </div>
+                <div
+                  className="font-extrabold mt-1.5 break-words"
+                  style={{ fontSize: tamañoTotalArqueo(texto), lineHeight: 1.2 }}
+                >
+                  {texto}
+                </div>
               </div>
-              <div className="text-[22px] font-extrabold mt-1.5">
-                {formatMoney(a.total, a.moneda)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
