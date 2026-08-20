@@ -100,6 +100,7 @@ export const HEADERS = {
     "notaAnulacion",
     "movimientoOrigenId",
     "esAperturaSaldo",
+    "usuarioRetiroId",
   ],
   [TABS.CONFIGURACION]: ["clave", "valor"],
 } as const;

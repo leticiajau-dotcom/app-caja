@@ -31,3 +31,8 @@ export function soloVeSusPropiosMovimientos(rol: Rol): boolean {
 export function soloPuedeRegistrarEgresos(rol: Rol): boolean {
   return rol === "empleado";
 }
+
+/** Solo admin y socio pueden registrar (y figurar como) retiros. */
+export function puedeRegistrarRetiros(rol: Rol): boolean {
+  return rol === "admin" || rol === "socio";
+}

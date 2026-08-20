@@ -32,7 +32,7 @@ export interface Cuenta {
   creadoEn: string;
 }
 
-export type TipoMovimiento = "ingreso" | "egreso" | "transferencia";
+export type TipoMovimiento = "ingreso" | "egreso" | "transferencia" | "retiro";
 
 export interface Movimiento {
   id: string;
@@ -46,6 +46,11 @@ export interface Movimiento {
   descripcion: string;
   usuarioId: string; // quién registró el movimiento
   creadoEn: string;
+  /** Solo para tipo "retiro": el usuario (admin o socio) que retiró ese
+   *  importe. Si un retiro se carga para varios usuarios a la vez, se
+   *  registra un movimiento por cada uno (mismo monto cada uno), no un
+   *  monto repartido entre todos. */
+  usuarioRetiroId: string | null;
 
   // --- Rectificaciones / auditoría ---
   /** Si es true, este movimiento NO se cuenta en los saldos: fue anulado por un error de carga. */

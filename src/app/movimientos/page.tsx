@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { formatFecha, formatFechaCorta, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
-import { soloPuedeRegistrarEgresos } from "@/lib/permisos";
-import type { Cuenta, Movimiento, SesionInterna, TipoMovimiento } from "@/lib/types";
+import { puedeRegistrarRetiros, soloPuedeRegistrarEgresos } from "@/lib/permisos";
+import type { Cuenta, Movimiento, Rol, SesionInterna, TipoMovimiento } from "@/lib/types";
 
 interface UsuarioPublico {
   id: string;
   nombre: string;
+  rol: Rol;
 }
 
 function hoyISO() {
@@ -48,16 +49,64 @@ function FlechaGruesa({
 }
 
 // Versión en celular de la columna "Tipo": flechas en vez de palabra, para
-// ahorrar espacio (ingreso = flecha verde arriba, egreso = flecha roja
-// abajo, transferencia = las dos juntas).
+// ahorrar espacio (ingreso = flecha verde arriba, egreso y retiro = flecha
+// roja abajo —un retiro se comporta como un egreso—, transferencia = las
+// dos juntas).
 function IconoTipo({ tipo }: { tipo: TipoMovimiento }) {
   const etiqueta =
-    tipo === "ingreso" ? "Ingreso" : tipo === "egreso" ? "Egreso" : "Transferencia";
+    tipo === "ingreso"
+      ? "Ingreso"
+      : tipo === "egreso"
+        ? "Egreso"
+        : tipo === "retiro"
+          ? "Retiro"
+          : "Transferencia";
+  const mostrarArriba = tipo === "ingreso" || tipo === "transferencia";
+  const mostrarAbajo = tipo === "egreso" || tipo === "retiro" || tipo === "transferencia";
   return (
     <span aria-label={etiqueta} className="inline-flex items-center gap-0.5">
-      {tipo !== "egreso" && <FlechaGruesa color={VERDE_INGRESO} direccion="arriba" />}
-      {tipo !== "ingreso" && <FlechaGruesa color={ROJO_EGRESO} direccion="abajo" />}
+      {mostrarArriba && <FlechaGruesa color={VERDE_INGRESO} direccion="arriba" />}
+      {mostrarAbajo && <FlechaGruesa color={ROJO_EGRESO} direccion="abajo" />}
     </span>
+  );
+}
+
+function UsuariosRetiroCheckboxes({
+  usuarios,
+  seleccionados,
+  onChange,
+}: {
+  usuarios: UsuarioPublico[];
+  seleccionados: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  function alternar(id: string) {
+    onChange(
+      seleccionados.includes(id)
+        ? seleccionados.filter((x) => x !== id)
+        : [...seleccionados, id]
+    );
+  }
+  if (usuarios.length === 0) {
+    return (
+      <p className="text-xs text-madera-400">
+        No hay administradores ni socios cargados todavía.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-3">
+      {usuarios.map((u) => (
+        <label key={u.id} className="flex items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={seleccionados.includes(u.id)}
+            onChange={() => alternar(u.id)}
+          />
+          {u.nombre}
+        </label>
+      ))}
+    </div>
   );
 }
 
@@ -80,6 +129,7 @@ export default function MovimientosPage() {
   const [monto, setMonto] = useState(0);
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
+  const [usuariosRetiro, setUsuariosRetiro] = useState<string[]>([]);
 
   async function cargar() {
     setCargando(true);
@@ -128,6 +178,12 @@ export default function MovimientosPage() {
     return m;
   }, [usuarios]);
 
+  // Solo admin y socio pueden figurar como quien retira.
+  const usuariosParaRetiro = useMemo(
+    () => usuarios.filter((u) => puedeRegistrarRetiros(u.rol)),
+    [usuarios]
+  );
+
   // Para cargar un movimiento hay que ser responsable de esa cuenta —
   // incluido el admin, que solo gestiona la creación y los responsables.
   const cuentasOperables = useMemo(() => {
@@ -150,12 +206,21 @@ export default function MovimientosPage() {
     ) {
       setCuentaDestinoId("");
     }
+    if (tipo === "retiro") {
+      setCategoria("Retiro");
+    } else {
+      setUsuariosRetiro([]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentaId, tipo]);
 
   async function crear(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (tipo === "retiro" && usuariosRetiro.length === 0) {
+      setError("Seleccioná al menos un usuario para el retiro.");
+      return;
+    }
     setGuardando(true);
     try {
       const res = await fetch("/api/movements", {
@@ -169,13 +234,15 @@ export default function MovimientosPage() {
           monto,
           categoria,
           descripcion,
+          usuarioRetiroIds: tipo === "retiro" ? usuariosRetiro : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setMonto(0);
-      setCategoria("");
+      setCategoria(tipo === "retiro" ? "Retiro" : "");
       setDescripcion("");
+      setUsuariosRetiro([]);
       await cargar();
     } catch (e: any) {
       setError(e.message ?? "Error inesperado.");
@@ -203,6 +270,7 @@ export default function MovimientosPage() {
           m.descripcion,
           m.tipo,
           usuariosPorId.get(m.usuarioId),
+          m.usuarioRetiroId ? usuariosPorId.get(m.usuarioRetiroId) : undefined,
         ];
         return campos.some((c) => c?.toLowerCase().includes(textoBusqueda));
       })
@@ -213,7 +281,7 @@ export default function MovimientosPage() {
       <div>
         <h1 className="text-2xl font-bold text-madera-800">Movimientos</h1>
         <p className="text-madera-600">
-          Registrá ingresos, egresos y transferencias entre cuentas.
+          Registrá ingresos, egresos, transferencias entre cuentas y retiros.
         </p>
       </div>
 
@@ -250,6 +318,7 @@ export default function MovimientosPage() {
                 <option value="ingreso">Ingreso</option>
                 <option value="egreso">Egreso</option>
                 <option value="transferencia">Transferencia entre cuentas</option>
+                <option value="retiro">Retiro</option>
               </select>
             )}
           </div>
@@ -307,18 +376,37 @@ export default function MovimientosPage() {
               )}
             </div>
           )}
+          {tipo === "retiro" && (
+            <div className="sm:col-span-2">
+              <label className="label">¿Quién retira?</label>
+              <UsuariosRetiroCheckboxes
+                usuarios={usuariosParaRetiro}
+                seleccionados={usuariosRetiro}
+                onChange={setUsuariosRetiro}
+              />
+              <p className="text-xs text-madera-400 mt-1">
+                El monto se registra completo para cada usuario que
+                selecciones (si elegís dos, se descuenta dos veces de la
+                cuenta: una por cada uno).
+              </p>
+            </div>
+          )}
           <div>
             <label className="label">Monto</label>
             <MoneyInput value={monto} onChange={setMonto} required />
           </div>
           <div>
             <label className="label">Categoría</label>
-            <input
-              className="input"
-              placeholder="Ej: Venta, Materiales, Sueldos..."
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-            />
+            {tipo === "retiro" ? (
+              <input className="input" value="Retiro" disabled />
+            ) : (
+              <input
+                className="input"
+                placeholder="Ej: Venta, Materiales, Sueldos..."
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+              />
+            )}
           </div>
           <div className="sm:col-span-2">
             <label className="label">Descripción</label>
@@ -370,7 +458,11 @@ export default function MovimientosPage() {
                   ? cuentasPorId.get(m.cuentaDestinoId)
                   : null;
                 const signo =
-                  m.tipo === "egreso" ? "-" : m.tipo === "ingreso" ? "+" : "";
+                  m.tipo === "egreso" || m.tipo === "retiro"
+                    ? "-"
+                    : m.tipo === "ingreso"
+                      ? "+"
+                      : "";
                 const descripcionVisible = descripcionAbierta === m.id;
                 return (
                   <tr
@@ -414,6 +506,11 @@ export default function MovimientosPage() {
                       {descripcionVisible && (
                         <p className="text-xs text-madera-500 mt-1 max-w-xs">
                           {m.descripcion}
+                        </p>
+                      )}
+                      {m.tipo === "retiro" && m.usuarioRetiroId && (
+                        <p className="text-xs text-madera-500 mt-1">
+                          Retiró: {usuariosPorId.get(m.usuarioRetiroId) ?? "—"}
                         </p>
                       )}
                       {m.anulado && (

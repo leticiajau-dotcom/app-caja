@@ -27,8 +27,13 @@ export default function RectificarModal({
   onCerrar,
   onListo,
 }: Props) {
+  // Un retiro carga un movimiento por cada usuario seleccionado, así que no
+  // entra en el flujo de "un solo reemplazo" de acá: para corregir un
+  // retiro hay que anularlo y cargar uno nuevo desde Movimientos.
+  const esRetiro = movimiento.tipo === "retiro";
+
   const [nota, setNota] = useState("");
-  const [cargarCorreccion, setCargarCorreccion] = useState(true);
+  const [cargarCorreccion, setCargarCorreccion] = useState(!esRetiro);
   const [fecha, setFecha] = useState(movimiento.fecha);
   const [tipo, setTipo] = useState<TipoMovimiento>(movimiento.tipo);
   const [cuentaId, setCuentaId] = useState(movimiento.cuentaId);
@@ -113,14 +118,21 @@ export default function RectificarModal({
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-madera-700">
-            <input
-              type="checkbox"
-              checked={cargarCorreccion}
-              onChange={(e) => setCargarCorreccion(e.target.checked)}
-            />
-            Cargar el movimiento ya corregido
-          </label>
+          {esRetiro ? (
+            <p className="text-xs text-madera-400 border-t border-madera-100 pt-3">
+              Este movimiento es un retiro: para corregirlo, anulalo acá y
+              cargá uno nuevo desde Movimientos.
+            </p>
+          ) : (
+            <label className="flex items-center gap-2 text-sm text-madera-700">
+              <input
+                type="checkbox"
+                checked={cargarCorreccion}
+                onChange={(e) => setCargarCorreccion(e.target.checked)}
+              />
+              Cargar el movimiento ya corregido
+            </label>
+          )}
 
           {cargarCorreccion && (
             <div className="grid gap-3 sm:grid-cols-2 border-t border-madera-100 pt-4">

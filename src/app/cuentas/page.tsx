@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { MONEDAS_SUGERIDAS, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import { puedeVerCuentas } from "@/lib/permisos";
@@ -368,6 +369,12 @@ export default function CuentasPage() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="flex justify-end">
+        <Link href="/retiros" className="btn-secondary">
+          Retiros
+        </Link>
       </div>
     </div>
   );

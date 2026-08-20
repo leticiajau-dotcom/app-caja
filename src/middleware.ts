@@ -36,5 +36,6 @@ export const config = {
     "/cuentas/:path*",
     "/movimientos/:path*",
     "/usuarios/:path*",
+    "/retiros/:path*",
   ],
 };

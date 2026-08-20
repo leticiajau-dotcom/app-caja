@@ -291,6 +291,7 @@ function rowToMovimiento(r: Record<string, string>): Movimiento {
     notaAnulacion: r.notaAnulacion || null,
     movimientoOrigenId: r.movimientoOrigenId || null,
     esAperturaSaldo: toBool(r.esAperturaSaldo),
+    usuarioRetiroId: r.usuarioRetiroId || null,
   };
 }
 
@@ -312,6 +313,7 @@ function movimientoAFila(m: Movimiento): (string | number)[] {
     m.notaAnulacion ?? "",
     m.movimientoOrigenId ?? "",
     String(m.esAperturaSaldo),
+    m.usuarioRetiroId ?? "",
   ];
 }
 
@@ -351,6 +353,8 @@ export async function crearMovimiento(datos: {
   usuarioId: string;
   movimientoOrigenId?: string | null;
   esAperturaSaldo?: boolean;
+  /** Solo para tipo "retiro": el usuario que retiró este importe puntual. */
+  usuarioRetiroId?: string | null;
 }): Promise<Movimiento> {
   if (datos.monto <= 0) {
     throw new Error("El monto debe ser mayor a cero.");
@@ -391,6 +395,7 @@ export async function crearMovimiento(datos: {
     notaAnulacion: null,
     movimientoOrigenId: datos.movimientoOrigenId ?? null,
     esAperturaSaldo: datos.esAperturaSaldo ?? false,
+    usuarioRetiroId: datos.usuarioRetiroId ?? null,
   };
   const tabDestino = await obtenerPestañaMovimientosParaEscribir();
   await agregarFila(tabDestino, movimientoAFila(movimiento));
@@ -470,7 +475,8 @@ export function calcularSaldosPorCuenta(
     if (m.anulado || m.esAperturaSaldo) continue;
     if (m.tipo === "ingreso") {
       saldos.set(m.cuentaId, (saldos.get(m.cuentaId) ?? 0) + m.monto);
-    } else if (m.tipo === "egreso") {
+    } else if (m.tipo === "egreso" || m.tipo === "retiro") {
+      // Un retiro se comporta como un egreso a efectos del saldo.
       saldos.set(m.cuentaId, (saldos.get(m.cuentaId) ?? 0) - m.monto);
     } else if (m.tipo === "transferencia" && m.cuentaDestinoId) {
       saldos.set(m.cuentaId, (saldos.get(m.cuentaId) ?? 0) - m.monto);
