@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { crearMovimiento, listarMovimientos, usuarioPuedeOperarCuenta } from "@/lib/repo";
+import { soloPuedeRegistrarEgresos, soloVeSusPropiosMovimientos } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,14 @@ const CrearMovimientoSchema = z.object({
 
 export async function GET() {
   try {
-    await requerirSesion();
+    const sesion = await requerirSesion();
     const movimientos = await listarMovimientos();
-    return NextResponse.json({ movimientos });
+    // El rol "empleado" (acotado) solo ve los movimientos que él mismo
+    // cargó, nunca los de otros usuarios.
+    const visibles = soloVeSusPropiosMovimientos(sesion.rol)
+      ? movimientos.filter((m) => m.usuarioId === sesion.usuarioId)
+      : movimientos;
+    return NextResponse.json({ movimientos: visibles });
   } catch (err) {
     return manejarError(err);
   }
@@ -30,6 +36,10 @@ export async function POST(req: Request) {
     const sesion = await requerirSesion();
     const body = await req.json();
     const datos = CrearMovimientoSchema.parse(body);
+
+    if (soloPuedeRegistrarEgresos(sesion.rol) && datos.tipo !== "egreso") {
+      throw new ApiError("Como empleado solo podés registrar egresos.", 403);
+    }
 
     if (!(await usuarioPuedeOperarCuenta(sesion, datos.cuentaId))) {
       throw new ApiError(

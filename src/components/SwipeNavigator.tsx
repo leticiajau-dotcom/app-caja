@@ -2,16 +2,17 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { SesionInterna } from "@/lib/types";
+import type { Rol, SesionInterna } from "@/lib/types";
+import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
 
 // Mismo orden que el menú inferior (MobileBottomNav): deslizar hacia la
 // izquierda avanza a la pestaña siguiente, hacia la derecha vuelve a la
 // anterior.
-const ORDEN_TABS = [
-  { href: "/dashboard" },
-  { href: "/movimientos" },
-  { href: "/cuentas" },
-  { href: "/usuarios", soloAdmin: true },
+const ORDEN_TABS: { href: string; visible: (rol: Rol) => boolean }[] = [
+  { href: "/dashboard", visible: () => true },
+  { href: "/movimientos", visible: () => true },
+  { href: "/cuentas", visible: puedeVerCuentas },
+  { href: "/usuarios", visible: puedeVerUsuarios },
 ];
 
 const UMBRAL_PX = 70; // distancia horizontal mínima para contar como swipe
@@ -67,7 +68,7 @@ export default function SwipeNavigator({
       const dy = t.clientY - inicio.y;
       if (Math.abs(dx) < UMBRAL_PX || Math.abs(dy) > MAX_DESVIO_VERTICAL) return;
 
-      const tabs = ORDEN_TABS.filter((tb) => !tb.soloAdmin || sesion?.rol === "admin");
+      const tabs = ORDEN_TABS.filter((tb) => sesion && tb.visible(sesion.rol));
       const idx = tabs.findIndex((tb) => tb.href === pathname);
       if (idx === -1) return;
 

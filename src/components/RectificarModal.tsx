@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import MoneyInput from "./MoneyInput";
-import type { Cuenta, Movimiento, TipoMovimiento } from "@/lib/types";
+import { soloPuedeRegistrarEgresos } from "@/lib/permisos";
+import type { Cuenta, Movimiento, Rol, TipoMovimiento } from "@/lib/types";
 
 interface Props {
   movimiento: Movimiento;
   /** Todas las cuentas activas (para elegir la cuenta destino de una
    *  transferencia, igual que en el formulario principal). */
   cuentas: Cuenta[];
-  /** Cuentas en las que el usuario actual puede cargar movimientos (todas,
-   *  si es admin; solo las propias, si es empleado). */
+  /** Cuentas en las que el usuario actual puede cargar movimientos. */
   cuentasOperables: Cuenta[];
+  rol: Rol;
   onCerrar: () => void;
   onListo: () => void;
 }
@@ -22,6 +23,7 @@ export default function RectificarModal({
   movimiento,
   cuentas,
   cuentasOperables,
+  rol,
   onCerrar,
   onListo,
 }: Props) {
@@ -38,6 +40,12 @@ export default function RectificarModal({
   const [descripcion, setDescripcion] = useState(movimiento.descripcion);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+
+  // Si el rol solo puede registrar egresos, el tipo efectivo del
+  // reemplazo es siempre "egreso", más allá de qué diga el estado (que
+  // puede haber arrancado en otro valor si el movimiento original —
+  // cargado antes de esta restricción— era de otro tipo).
+  const tipoEfectivo: TipoMovimiento = soloPuedeRegistrarEgresos(rol) ? "egreso" : tipo;
 
   const cuentaOrigen = cuentas.find((c) => c.id === cuentaId);
   const cuentasDestinoPosibles = cuentas.filter(
@@ -57,9 +65,10 @@ export default function RectificarModal({
           reemplazo: cargarCorreccion
             ? {
                 fecha,
-                tipo,
+                tipo: tipoEfectivo,
                 cuentaId,
-                cuentaDestinoId: tipo === "transferencia" ? cuentaDestinoId : null,
+                cuentaDestinoId:
+                  tipoEfectivo === "transferencia" ? cuentaDestinoId : null,
                 monto,
                 categoria,
                 descripcion,
@@ -127,19 +136,25 @@ export default function RectificarModal({
               </div>
               <div>
                 <label className="label">Tipo</label>
-                <select
-                  className="input"
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as TipoMovimiento)}
-                >
-                  <option value="ingreso">Ingreso</option>
-                  <option value="egreso">Egreso</option>
-                  <option value="transferencia">Transferencia entre cuentas</option>
-                </select>
+                {soloPuedeRegistrarEgresos(rol) ? (
+                  <select className="input" value="egreso" disabled>
+                    <option value="egreso">Egreso</option>
+                  </select>
+                ) : (
+                  <select
+                    className="input"
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value as TipoMovimiento)}
+                  >
+                    <option value="ingreso">Ingreso</option>
+                    <option value="egreso">Egreso</option>
+                    <option value="transferencia">Transferencia entre cuentas</option>
+                  </select>
+                )}
               </div>
               <div>
                 <label className="label">
-                  {tipo === "transferencia" ? "Cuenta origen" : "Cuenta"}
+                  {tipoEfectivo === "transferencia" ? "Cuenta origen" : "Cuenta"}
                 </label>
                 <select
                   className="input"
@@ -154,7 +169,7 @@ export default function RectificarModal({
                   ))}
                 </select>
               </div>
-              {tipo === "transferencia" && (
+              {tipoEfectivo === "transferencia" && (
                 <div>
                   <label className="label">Cuenta destino</label>
                   <select

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import type { SesionInterna } from "@/lib/types";
+import type { Rol, SesionInterna } from "@/lib/types";
+import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
 
 interface Tab {
   href: string;
   label: string;
-  soloAdmin?: boolean;
+  visible: (rol: Rol) => boolean;
   // Border-radius del ícono: una forma distinta por pestaña, como en el
   // diseño de referencia (cuadrado redondeado / círculo / cuadrado chico /
   // "gota").
@@ -14,10 +15,15 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { href: "/dashboard", label: "Resumen", forma: "8px" },
-  { href: "/movimientos", label: "Movimientos", forma: "50%" },
-  { href: "/cuentas", label: "Cuentas", forma: "4px" },
-  { href: "/usuarios", label: "Usuarios", soloAdmin: true, forma: "50% 50% 50% 0" },
+  { href: "/dashboard", label: "Resumen", visible: () => true, forma: "8px" },
+  { href: "/movimientos", label: "Movimientos", visible: () => true, forma: "50%" },
+  { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas, forma: "4px" },
+  {
+    href: "/usuarios",
+    label: "Usuarios",
+    visible: puedeVerUsuarios,
+    forma: "50% 50% 50% 0",
+  },
 ];
 
 export default function MobileBottomNav({
@@ -27,7 +33,7 @@ export default function MobileBottomNav({
   sesion: SesionInterna;
   pathname: string;
 }) {
-  const tabs = TABS.filter((t) => !t.soloAdmin || sesion.rol === "admin");
+  const tabs = TABS.filter((t) => t.visible(sesion.rol));
 
   return (
     <nav

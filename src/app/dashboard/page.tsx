@@ -3,34 +3,68 @@ import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/internalSession";
 import { obtenerResumen } from "@/lib/repo";
 import { formatMoney } from "@/lib/format";
+import { puedeVerResumenGeneral } from "@/lib/permisos";
 import ResumenMobile from "@/components/ResumenMobile";
+import type { Resumen } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/** El rol "empleado" (acotado) solo ve, acá, el/los grupo(s) donde él
+ *  mismo es responsable — nunca las cuentas de otros ni los totales
+ *  generales de la caja. */
+function filtrarResumenParaEmpleado(resumen: Resumen, usuarioId: string): Resumen {
+  const gruposPropios = resumen.saldosPorGrupoResponsable.filter((g) =>
+    g.usuarioIds.includes(usuarioId)
+  );
+  const cuentaIdsPropias = new Set(
+    gruposPropios.flatMap((g) =>
+      Object.values(g.cuentasPorMoneda).flat().map((sc) => sc.cuenta.id)
+    )
+  );
+  return {
+    saldosPorCuenta: resumen.saldosPorCuenta.filter((sc) =>
+      cuentaIdsPropias.has(sc.cuenta.id)
+    ),
+    saldosPorGrupoResponsable: gruposPropios,
+    arqueoPorMoneda: [],
+  };
+}
 
 export default async function DashboardPage() {
   const sesion = await obtenerSesion();
   if (!sesion) redirect("/login");
 
-  const resumen = await obtenerResumen();
+  const resumenCompleto = await obtenerResumen();
+  const mostrarResumenGeneral = puedeVerResumenGeneral(sesion.rol);
+  const resumen = mostrarResumenGeneral
+    ? resumenCompleto
+    : filtrarResumenParaEmpleado(resumenCompleto, sesion.usuarioId);
   const hayCuentas = resumen.saldosPorGrupoResponsable.length > 0;
 
   return (
     <div>
-      <ResumenMobile resumen={resumen} nombreUsuario={sesion.nombre} />
+      <ResumenMobile
+        resumen={resumen}
+        nombreUsuario={sesion.nombre}
+        soloPropio={!mostrarResumenGeneral}
+      />
 
       <div className="hidden md:block space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-madera-800">Resumen</h1>
           <p className="text-madera-600">
-            Cuentas agrupadas por responsable, con subtotales por responsable y
-            moneda, y los totales generales de la caja al final.
+            {mostrarResumenGeneral
+              ? "Cuentas agrupadas por responsable, con subtotales por responsable y moneda, y los totales generales de la caja al final."
+              : "El saldo de las cuentas de las que sos responsable."}
           </p>
         </div>
 
         <div className="card overflow-x-auto">
           {!hayCuentas ? (
             <p className="text-madera-500 text-sm">
-              Todavía no hay cuentas activas cargadas.
+              {mostrarResumenGeneral
+                ? "Todavía no hay cuentas activas cargadas."
+                : "Todavía no sos responsable de ninguna cuenta."}
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -93,6 +127,7 @@ export default async function DashboardPage() {
                   );
                 })}
               </tbody>
+              {mostrarResumenGeneral && (
               <tfoot>
                 <tr>
                   <td colSpan={3} className="pt-4 pb-1 pr-4">
@@ -123,6 +158,7 @@ export default async function DashboardPage() {
                   </tr>
                 )}
               </tfoot>
+              )}
             </table>
           )}
         </div>

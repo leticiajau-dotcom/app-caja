@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const CrearUsuarioSchema = z.object({
   nombre: z.string().min(1),
   pin: z.string().min(4, "El PIN debe tener al menos 4 dígitos").max(8),
-  rol: z.enum(["admin", "empleado"]).default("empleado"),
+  rol: z.enum(["admin", "socio", "empleado"]).default("socio"),
 });
 
 export async function GET() {

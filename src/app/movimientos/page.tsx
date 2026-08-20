@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatFecha, formatFechaCorta, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
+import { soloPuedeRegistrarEgresos } from "@/lib/permisos";
 import type { Cuenta, Movimiento, SesionInterna, TipoMovimiento } from "@/lib/types";
 
 interface UsuarioPublico {
@@ -98,6 +99,9 @@ export default function MovimientosPage() {
     setUsuarios(du.usuarios ?? []);
     setMovimientos(dm.movimientos ?? []);
     setSesion(sesionActual);
+    if (sesionActual && soloPuedeRegistrarEgresos(sesionActual.rol)) {
+      setTipo("egreso");
+    }
     if (!cuentaId && sesionActual) {
       const operables = activas.filter((c: Cuenta) =>
         c.usuarioResponsablesIds.includes(sesionActual.usuarioId)
@@ -228,15 +232,26 @@ export default function MovimientosPage() {
           </div>
           <div>
             <label className="label">Tipo</label>
-            <select
-              className="input"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as TipoMovimiento)}
-            >
-              <option value="ingreso">Ingreso</option>
-              <option value="egreso">Egreso</option>
-              <option value="transferencia">Transferencia entre cuentas</option>
-            </select>
+            {sesion && soloPuedeRegistrarEgresos(sesion.rol) ? (
+              <>
+                <select className="input" value="egreso" disabled>
+                  <option value="egreso">Egreso</option>
+                </select>
+                <p className="text-xs text-madera-400 mt-1">
+                  Como empleado solo podés registrar egresos.
+                </p>
+              </>
+            ) : (
+              <select
+                className="input"
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as TipoMovimiento)}
+              >
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+                <option value="transferencia">Transferencia entre cuentas</option>
+              </select>
+            )}
           </div>
           <div>
             <label className="label">
@@ -446,6 +461,7 @@ export default function MovimientosPage() {
           movimiento={rectificando}
           cuentas={cuentas}
           cuentasOperables={cuentasOperables}
+          rol={sesion.rol}
           onCerrar={() => setRectificando(null)}
           onListo={() => {
             setRectificando(null);

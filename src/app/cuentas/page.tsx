@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MONEDAS_SUGERIDAS, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
+import { puedeVerCuentas } from "@/lib/permisos";
 import type { Cuenta } from "@/lib/types";
 
 interface UsuarioPublico {
@@ -52,6 +53,7 @@ export default function CuentasPage() {
   const [usuarios, setUsuarios] = useState<UsuarioPublico[]>([]);
   const [cargando, setCargando] = useState(true);
   const [esAdmin, setEsAdmin] = useState(false);
+  const [sinPermiso, setSinPermiso] = useState(false);
   const [error, setError] = useState("");
 
   const [nombre, setNombre] = useState("");
@@ -79,6 +81,7 @@ export default function CuentasPage() {
     setCuentas(dc.cuentas ?? []);
     setUsuarios(du.usuarios ?? []);
     setEsAdmin(ds.sesion?.rol === "admin");
+    setSinPermiso(ds.sesion ? !puedeVerCuentas(ds.sesion.rol) : false);
     setCargando(false);
   }
 
@@ -159,6 +162,16 @@ export default function CuentasPage() {
     } finally {
       setGuardandoEdicion(false);
     }
+  }
+
+  if (sinPermiso) {
+    return (
+      <div className="card max-w-md mx-auto mt-10 text-center">
+        <p className="text-madera-700">
+          No tenés acceso a la pantalla de Cuentas.
+        </p>
+      </div>
+    );
   }
 
   return (

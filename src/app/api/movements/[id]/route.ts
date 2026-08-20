@@ -7,6 +7,7 @@ import {
   crearMovimiento,
   usuarioPuedeOperarCuenta,
 } from "@/lib/repo";
+import { soloPuedeRegistrarEgresos } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,14 @@ export async function POST(
 
     const body = await req.json();
     const datos = RectificarSchema.parse(body);
+
+    if (
+      datos.reemplazo &&
+      soloPuedeRegistrarEgresos(sesion.rol) &&
+      datos.reemplazo.tipo !== "egreso"
+    ) {
+      throw new ApiError("Como empleado solo podés registrar egresos.", 403);
+    }
 
     if (
       datos.reemplazo &&

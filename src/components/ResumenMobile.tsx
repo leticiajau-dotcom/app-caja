@@ -25,9 +25,13 @@ function claveGrupo(usuarioIds: string[]) {
 export default function ResumenMobile({
   resumen,
   nombreUsuario,
+  soloPropio = false,
 }: {
   resumen: Resumen;
   nombreUsuario: string;
+  /** true para el rol "empleado" (acotado): solo ve sus propias cuentas,
+   *  nunca el resumen general de la caja. */
+  soloPropio?: boolean;
 }) {
   const [expandido, setExpandido] = useState<Record<string, boolean>>(
     Object.fromEntries(
@@ -53,7 +57,7 @@ export default function ResumenMobile({
           Hola, {nombreCapitalizado}
         </div>
         <div className="text-[13px] font-semibold mt-0.5" style={{ color: MUTED }}>
-          Resumen general de tu caja
+          {soloPropio ? "El saldo de tus cuentas" : "Resumen general de tu caja"}
         </div>
       </div>
 
@@ -84,16 +88,22 @@ export default function ResumenMobile({
       )}
 
       <div className="flex items-baseline justify-between mb-2.5">
-        <div className="text-[15px] font-extrabold">Cuentas por responsable</div>
-        <div className="text-[12px] font-bold" style={{ color: MUTED }}>
-          {resumen.saldosPorGrupoResponsable.length}{" "}
-          {resumen.saldosPorGrupoResponsable.length === 1 ? "grupo" : "grupos"}
+        <div className="text-[15px] font-extrabold">
+          {soloPropio ? "Tus cuentas" : "Cuentas por responsable"}
         </div>
+        {!soloPropio && (
+          <div className="text-[12px] font-bold" style={{ color: MUTED }}>
+            {resumen.saldosPorGrupoResponsable.length}{" "}
+            {resumen.saldosPorGrupoResponsable.length === 1 ? "grupo" : "grupos"}
+          </div>
+        )}
       </div>
 
       {resumen.saldosPorGrupoResponsable.length === 0 ? (
         <p className="text-sm" style={{ color: MUTED }}>
-          Todavía no hay cuentas activas con responsable asignado.
+          {soloPropio
+            ? "Todavía no sos responsable de ninguna cuenta."
+            : "Todavía no hay cuentas activas con responsable asignado."}
         </p>
       ) : (
         resumen.saldosPorGrupoResponsable.map((grupo, i) => {

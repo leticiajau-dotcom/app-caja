@@ -20,7 +20,7 @@ export default function UsuariosPage() {
 
   const [nombre, setNombre] = useState("");
   const [pin, setPin] = useState("");
-  const [rol, setRol] = useState<Rol>("empleado");
+  const [rol, setRol] = useState<Rol>("socio");
 
   async function cargar() {
     setCargando(true);
@@ -53,7 +53,7 @@ export default function UsuariosPage() {
       if (!res.ok) throw new Error(data.error);
       setNombre("");
       setPin("");
-      setRol("empleado");
+      setRol("socio");
       await cargar();
     } catch (e: any) {
       setError(e.message ?? "Error inesperado.");
@@ -131,10 +131,21 @@ export default function UsuariosPage() {
               onChange={(e) => setRol(e.target.value as Rol)}
             >
               <option value="empleado">Empleado</option>
+              <option value="socio">Socio</option>
               <option value="admin">Administrador</option>
             </select>
           </div>
           <div className="sm:col-span-3">
+            <p className="text-xs text-madera-400 -mt-1 mb-1">
+              <span className="font-medium">Empleado:</span> en Resumen solo
+              ve sus propias cuentas, en Movimientos solo los que él mismo
+              cargó, y no ve Cuentas ni Usuarios.{" "}
+              <span className="font-medium">Socio:</span> ve todo lo de las
+              cuentas de las que es responsable, incluidos el resumen
+              general y todos los movimientos.{" "}
+              <span className="font-medium">Administrador:</span> además
+              crea cuentas y usuarios.
+            </p>
             {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
             <button className="btn-primary" disabled={guardando}>
               {guardando ? "Guardando..." : "Crear usuario"}
@@ -168,6 +179,7 @@ export default function UsuariosPage() {
                       onChange={(e) => cambiarRol(u, e.target.value as Rol)}
                     >
                       <option value="empleado">Empleado</option>
+                      <option value="socio">Socio</option>
                       <option value="admin">Administrador</option>
                     </select>
                   </td>

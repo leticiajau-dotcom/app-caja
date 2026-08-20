@@ -6,12 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import type { Configuracion, SesionInterna } from "@/lib/types";
 import ConfiguracionModal from "./ConfiguracionModal";
 import MobileBottomNav from "./MobileBottomNav";
+import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import type { Rol } from "@/lib/types";
 
-const LINKS = [
-  { href: "/dashboard", label: "Resumen" },
-  { href: "/movimientos", label: "Movimientos" },
-  { href: "/cuentas", label: "Cuentas" },
-  { href: "/usuarios", label: "Usuarios", soloAdmin: true },
+const LINKS: { href: string; label: string; visible: (rol: Rol) => boolean }[] = [
+  { href: "/dashboard", label: "Resumen", visible: () => true },
+  { href: "/movimientos", label: "Movimientos", visible: () => true },
+  { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas },
+  { href: "/usuarios", label: "Usuarios", visible: puedeVerUsuarios },
 ];
 
 // Cuánto hay que mantener presionado el nombre/logo para abrir la edición
@@ -114,7 +116,7 @@ export default function NavBar() {
           <div className="flex items-center gap-6">
             {marca}
             <nav className="flex gap-4 text-sm">
-              {LINKS.filter((l) => !l.soloAdmin || sesion.rol === "admin").map(
+              {LINKS.filter((l) => l.visible(sesion.rol)).map(
                 (l) => (
                   <Link
                     key={l.href}

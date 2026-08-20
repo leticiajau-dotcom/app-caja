@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const ActualizarUsuarioSchema = z.object({
   nombre: z.string().min(1).optional(),
-  rol: z.enum(["admin", "empleado"]).optional(),
+  rol: z.enum(["admin", "socio", "empleado"]).optional(),
   activo: z.boolean().optional(),
   pin: z.string().min(4).max(8).optional(),
 });

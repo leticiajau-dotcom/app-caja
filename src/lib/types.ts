@@ -1,6 +1,13 @@
 // Tipos de dominio para la app de control de caja.
 
-export type Rol = "admin" | "empleado";
+/** admin: gestiona cuentas/usuarios y opera como cualquier responsable.
+ *  socio: mismos permisos que tenía "empleado" antes de este cambio —
+ *  opera las cuentas de las que es responsable, ve todos los movimientos
+ *  y el resumen general.
+ *  empleado: rol acotado — en "Resumen" solo ve sus propias cuentas como
+ *  responsable (nada del resto de la caja), en "Movimientos" solo ve los
+ *  que él mismo cargó, y no tiene acceso a "Cuentas" ni "Usuarios". */
+export type Rol = "admin" | "socio" | "empleado";
 
 export interface Usuario {
   id: string;

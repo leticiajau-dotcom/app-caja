@@ -41,7 +41,37 @@ function rowToUsuario(r: Record<string, string>): Usuario {
   };
 }
 
+const CLAVE_MIGRACION_ROL_SOCIO = "migracionRolSocioHecha";
+
+/** Antes de este cambio, "empleado" era el único rol no-admin y tenía
+ *  permisos amplios (operar sus cuentas, ver todos los movimientos, ver
+ *  el resumen general de la caja). Ahora ese rol pasa a llamarse "socio",
+ *  y "empleado" es un rol nuevo mucho más acotado. Para que nadie pierda
+ *  acceso de golpe, la primera vez que se lee la lista de usuarios tras
+ *  este cambio migramos automáticamente cualquier fila que todavía diga
+ *  "empleado" a "socio" — una sola vez, marcado en Configuracion. */
+async function migrarRolEmpleadoASocioSiHaceFalta() {
+  const yaHecha = await leerConfigValor(CLAVE_MIGRACION_ROL_SOCIO);
+  if (yaHecha === "true") return;
+
+  const rows = await leerFilas<Record<string, string>>(TABS.USUARIOS);
+  for (const r of rows) {
+    if (r.rol === "empleado") {
+      await actualizarFilaPorId(TABS.USUARIOS, r.id, [
+        r.id,
+        r.nombre,
+        r.pinHash,
+        "socio",
+        r.activo,
+        r.creadoEn,
+      ]);
+    }
+  }
+  await escribirConfigValor(CLAVE_MIGRACION_ROL_SOCIO, "true");
+}
+
 export async function listarUsuarios(): Promise<Usuario[]> {
+  await migrarRolEmpleadoASocioSiHaceFalta();
   const rows = await leerFilas<Record<string, string>>(TABS.USUARIOS);
   return rows.map(rowToUsuario);
 }
