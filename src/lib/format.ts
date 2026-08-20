@@ -22,6 +22,19 @@ export function formatFecha(iso: string) {
   return d.toLocaleDateString("es-AR");
 }
 
+/** Versión compacta de la fecha (año a 2 dígitos, ej: 19/8/26) para donde
+ *  el espacio es más ajustado, como la tabla de movimientos en celular. */
+export function formatFechaCorta(iso: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "numeric",
+    year: "2-digit",
+  });
+}
+
 export const MONEDAS_SUGERIDAS = [
   { value: "ARS", label: "Peso argentino (ARS)" },
   { value: "USD", label: "Dólar estadounidense (USD)" },

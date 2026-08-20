@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatFecha, formatMoney } from "@/lib/format";
+import { formatFecha, formatFechaCorta, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
 import type { Cuenta, Movimiento, SesionInterna, TipoMovimiento } from "@/lib/types";
@@ -13,6 +13,33 @@ interface UsuarioPublico {
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+const VERDE_INGRESO = "oklch(52% 0.15 155)";
+const ROJO_EGRESO = "oklch(56% 0.18 25)";
+
+// Versión en celular de la columna "Tipo": flechas en vez de palabra, para
+// ahorrar espacio (ingreso = flecha verde arriba, egreso = flecha roja
+// abajo, transferencia = las dos juntas).
+function IconoTipo({ tipo }: { tipo: TipoMovimiento }) {
+  const arriba = (
+    <span aria-hidden="true" style={{ color: VERDE_INGRESO }} className="font-bold">
+      ↑
+    </span>
+  );
+  const abajo = (
+    <span aria-hidden="true" style={{ color: ROJO_EGRESO }} className="font-bold">
+      ↓
+    </span>
+  );
+  const etiqueta =
+    tipo === "ingreso" ? "Ingreso" : tipo === "egreso" ? "Egreso" : "Transferencia";
+  return (
+    <span aria-label={etiqueta} className="inline-flex items-center gap-0.5 text-base">
+      {tipo !== "egreso" && arriba}
+      {tipo !== "ingreso" && abajo}
+    </span>
+  );
 }
 
 export default function MovimientosPage() {
@@ -320,12 +347,16 @@ export default function MovimientosPage() {
                     }`}
                   >
                     <td className="py-2 pr-4 whitespace-nowrap">
-                      {formatFecha(m.fecha)}
+                      <span className="md:hidden">{formatFechaCorta(m.fecha)}</span>
+                      <span className="hidden md:inline">{formatFecha(m.fecha)}</span>
                     </td>
-                    <td className="py-2 pr-4 capitalize">
-                      {m.tipo}
+                    <td className="py-2 pr-4">
+                      <span className="hidden md:inline capitalize">{m.tipo}</span>
+                      <span className="md:hidden">
+                        <IconoTipo tipo={m.tipo} />
+                      </span>
                       {m.esAperturaSaldo && (
-                        <span className="ml-1 text-xs text-madera-400 normal-case">
+                        <span className="ml-1 text-xs text-madera-400">
                           (apertura)
                         </span>
                       )}
