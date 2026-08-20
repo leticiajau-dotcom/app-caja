@@ -3,6 +3,7 @@ import { Manrope } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import NavBar from "@/components/NavBar";
+import SwipeNavigator from "@/components/SwipeNavigator";
 
 // Tipografía del rediseño mobile (Resumen y, en menor medida, el resto de
 // las pantallas en celular). En desktop se sigue usando la fuente por
@@ -30,7 +31,7 @@ export default function RootLayout({
           <NavBar />
           {/* pb-24: deja lugar al menú inferior fijo en celular. */}
           <main className="max-w-5xl mx-auto px-4 pt-6 pb-24 md:pb-6">
-            {children}
+            <SwipeNavigator>{children}</SwipeNavigator>
           </main>
         </Providers>
       </body>
