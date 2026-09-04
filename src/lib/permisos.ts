@@ -14,6 +14,12 @@ export function puedeVerUsuarios(rol: Rol): boolean {
   return rol === "admin";
 }
 
+/** Admin y socio ven y gestionan "Clientes" (proyectos e importes). El
+ *  empleado (rol acotado) no la ve. */
+export function puedeVerClientes(rol: Rol): boolean {
+  return rol !== "empleado";
+}
+
 /** El empleado (rol acotado) solo ve, en "Resumen", el/los grupo(s) donde
  *  él mismo es responsable — nunca el resumen general de la caja. */
 export function puedeVerResumenGeneral(rol: Rol): boolean {

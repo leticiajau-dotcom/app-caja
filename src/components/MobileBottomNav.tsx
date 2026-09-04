@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Rol, SesionInterna } from "@/lib/types";
-import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import { puedeVerClientes, puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
 
 interface Tab {
   href: string;
@@ -18,6 +18,12 @@ const TABS: Tab[] = [
   { href: "/dashboard", label: "Resumen", visible: () => true, forma: "8px" },
   { href: "/movimientos", label: "Movimientos", visible: () => true, forma: "50%" },
   { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas, forma: "4px" },
+  {
+    href: "/clientes",
+    label: "Clientes",
+    visible: puedeVerClientes,
+    forma: "0 50% 50% 50%",
+  },
   {
     href: "/usuarios",
     label: "Usuarios",

@@ -111,3 +111,24 @@ export interface Configuracion {
   /** Data URI (base64) de un logo chico, o cadena vacía si no hay logo cargado. */
   logoDataUri: string;
 }
+
+export interface Cliente {
+  id: string;
+  /** Único entre todos los clientes (no distingue mayúsculas/minúsculas). */
+  nombre: string;
+  creadoEn: string;
+}
+
+export interface Proyecto {
+  id: string;
+  clienteId: string;
+  /** Único dentro de los proyectos de ese mismo cliente. */
+  nombre: string;
+  moneda: string;
+  /** Importe total acordado del proyecto. Más adelante se va a poder
+   *  registrar adelantos/pagos parciales contra este importe (y, más
+   *  adelante todavía, costos), pero por ahora es solo el valor de
+   *  referencia. */
+  precio: number;
+  creadoEn: string;
+}

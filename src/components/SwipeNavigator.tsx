@@ -3,7 +3,7 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Rol, SesionInterna } from "@/lib/types";
-import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import { puedeVerClientes, puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
 
 // Mismo orden que el menú inferior (MobileBottomNav): deslizar hacia la
 // izquierda avanza a la pestaña siguiente, hacia la derecha vuelve a la
@@ -12,6 +12,7 @@ const ORDEN_TABS: { href: string; visible: (rol: Rol) => boolean }[] = [
   { href: "/dashboard", visible: () => true },
   { href: "/movimientos", visible: () => true },
   { href: "/cuentas", visible: puedeVerCuentas },
+  { href: "/clientes", visible: puedeVerClientes },
   { href: "/usuarios", visible: puedeVerUsuarios },
 ];
 

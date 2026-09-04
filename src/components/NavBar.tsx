@@ -6,13 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import type { Configuracion, SesionInterna } from "@/lib/types";
 import ConfiguracionModal from "./ConfiguracionModal";
 import MobileBottomNav from "./MobileBottomNav";
-import { puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import { puedeVerClientes, puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
 import type { Rol } from "@/lib/types";
 
 const LINKS: { href: string; label: string; visible: (rol: Rol) => boolean }[] = [
   { href: "/dashboard", label: "Resumen", visible: () => true },
   { href: "/movimientos", label: "Movimientos", visible: () => true },
   { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas },
+  { href: "/clientes", label: "Clientes", visible: puedeVerClientes },
   { href: "/usuarios", label: "Usuarios", visible: puedeVerUsuarios },
 ];
 

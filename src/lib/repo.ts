@@ -13,9 +13,11 @@ import {
 import { ApiError } from "./guards";
 import type {
   ArqueoMoneda,
+  Cliente,
   Configuracion,
   Cuenta,
   Movimiento,
+  Proyecto,
   Resumen,
   Rol,
   SaldoCuenta,
@@ -644,4 +646,133 @@ export async function obtenerResumen(): Promise<Resumen> {
   );
   const arqueoPorMoneda = calcularArqueoPorMoneda(saldosPorCuenta);
   return { saldosPorCuenta, saldosPorGrupoResponsable, arqueoPorMoneda };
+}
+
+// ---------------------------------------------------------------------------
+// Clientes y Proyectos
+// ---------------------------------------------------------------------------
+// Cada cliente puede tener uno o más proyectos, cada uno con su importe
+// acordado. Pensado para más adelante poder registrar contra cada proyecto
+// los adelantos/pagos que van entrando a la caja (y, más adelante, sus
+// costos), pero por ahora es solo el alta de clientes y proyectos.
+
+function rowToCliente(r: Record<string, string>): Cliente {
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    creadoEn: r.creadoEn,
+  };
+}
+
+function rowToProyecto(r: Record<string, string>): Proyecto {
+  return {
+    id: r.id,
+    clienteId: r.clienteId,
+    nombre: r.nombre,
+    moneda: r.moneda || "ARS",
+    precio: toNum(r.precio),
+    creadoEn: r.creadoEn,
+  };
+}
+
+export async function listarClientes(): Promise<Cliente[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.CLIENTES);
+  return rows.map(rowToCliente);
+}
+
+export async function listarProyectos(): Promise<Proyecto[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.PROYECTOS);
+  return rows.map(rowToProyecto);
+}
+
+/** Da de alta un cliente nuevo junto con su primer proyecto (la pantalla de
+ *  "Nuevo cliente" carga los dos datos juntos). */
+export async function crearCliente(datos: {
+  nombre: string;
+  proyecto: string;
+  moneda: string;
+  precio: number;
+}): Promise<{ cliente: Cliente; proyecto: Proyecto }> {
+  const nombreCliente = datos.nombre.trim();
+  const nombreProyecto = datos.proyecto.trim();
+  if (!nombreCliente) throw new Error("Ingresá el nombre del cliente.");
+  if (!nombreProyecto) throw new Error("Ingresá el nombre del proyecto.");
+
+  const clientes = await listarClientes();
+  if (
+    clientes.some(
+      (c) => c.nombre.trim().toLowerCase() === nombreCliente.toLowerCase()
+    )
+  ) {
+    throw new Error("Ya existe un cliente con ese nombre.");
+  }
+
+  const cliente: Cliente = {
+    id: randomUUID(),
+    nombre: nombreCliente,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.CLIENTES, [cliente.id, cliente.nombre, cliente.creadoEn]);
+
+  const proyecto: Proyecto = {
+    id: randomUUID(),
+    clienteId: cliente.id,
+    nombre: nombreProyecto,
+    moneda: datos.moneda.trim().toUpperCase() || "ARS",
+    precio: datos.precio || 0,
+    creadoEn: cliente.creadoEn,
+  };
+  await agregarFila(TABS.PROYECTOS, [
+    proyecto.id,
+    proyecto.clienteId,
+    proyecto.nombre,
+    proyecto.moneda,
+    proyecto.precio,
+    proyecto.creadoEn,
+  ]);
+
+  return { cliente, proyecto };
+}
+
+/** Agrega un proyecto nuevo a un cliente ya existente. */
+export async function agregarProyecto(
+  clienteId: string,
+  datos: { nombre: string; moneda: string; precio: number }
+): Promise<Proyecto> {
+  const nombreProyecto = datos.nombre.trim();
+  if (!nombreProyecto) throw new Error("Ingresá el nombre del proyecto.");
+
+  const [clientes, proyectos] = await Promise.all([
+    listarClientes(),
+    listarProyectos(),
+  ]);
+  const cliente = clientes.find((c) => c.id === clienteId);
+  if (!cliente) throw new Error("Cliente no encontrado.");
+
+  const yaExiste = proyectos.some(
+    (p) =>
+      p.clienteId === clienteId &&
+      p.nombre.trim().toLowerCase() === nombreProyecto.toLowerCase()
+  );
+  if (yaExiste) {
+    throw new Error("Ese cliente ya tiene un proyecto con ese nombre.");
+  }
+
+  const proyecto: Proyecto = {
+    id: randomUUID(),
+    clienteId,
+    nombre: nombreProyecto,
+    moneda: datos.moneda.trim().toUpperCase() || "ARS",
+    precio: datos.precio || 0,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.PROYECTOS, [
+    proyecto.id,
+    proyecto.clienteId,
+    proyecto.nombre,
+    proyecto.moneda,
+    proyecto.precio,
+    proyecto.creadoEn,
+  ]);
+  return proyecto;
 }
