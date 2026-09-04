@@ -37,5 +37,6 @@ export const config = {
     "/movimientos/:path*",
     "/usuarios/:path*",
     "/retiros/:path*",
+    "/clientes/:path*",
   ],
 };
