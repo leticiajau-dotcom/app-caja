@@ -22,6 +22,11 @@ export default function UsuariosPage() {
   const [pin, setPin] = useState("");
   const [rol, setRol] = useState<Rol>("socio");
 
+  const [cambiandoPinId, setCambiandoPinId] = useState<string | null>(null);
+  const [nuevoPin, setNuevoPin] = useState("");
+  const [guardandoPin, setGuardandoPin] = useState(false);
+  const [errorPin, setErrorPin] = useState("");
+
   async function cargar() {
     setCargando(true);
     const res = await fetch("/api/users");
@@ -78,6 +83,35 @@ export default function UsuariosPage() {
       body: JSON.stringify({ rol: nuevoRol }),
     });
     await cargar();
+  }
+
+  function empezarCambiarPin(u: UsuarioSinPin) {
+    setCambiandoPinId(u.id);
+    setNuevoPin("");
+    setErrorPin("");
+  }
+
+  async function guardarPin(u: UsuarioSinPin) {
+    setErrorPin("");
+    if (nuevoPin.length < 4 || nuevoPin.length > 8) {
+      setErrorPin("El PIN debe tener entre 4 y 8 dígitos.");
+      return;
+    }
+    setGuardandoPin(true);
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: nuevoPin }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setCambiandoPinId(null);
+    } catch (e: any) {
+      setErrorPin(e.message ?? "Error inesperado.");
+    } finally {
+      setGuardandoPin(false);
+    }
   }
 
   if (sinPermiso) {
@@ -191,12 +225,54 @@ export default function UsuariosPage() {
                     )}
                   </td>
                   <td className="py-2 pr-4">
-                    <button
-                      className="btn-secondary py-1 px-2 text-xs"
-                      onClick={() => alternarActivo(u)}
-                    >
-                      {u.activo ? "Desactivar" : "Activar"}
-                    </button>
+                    {cambiandoPinId === u.id ? (
+                      <div className="flex flex-col gap-1.5 min-w-[180px]">
+                        <input
+                          className="input py-1"
+                          type="password"
+                          inputMode="numeric"
+                          placeholder="PIN nuevo (4 a 8 dígitos)"
+                          value={nuevoPin}
+                          onChange={(e) => setNuevoPin(e.target.value)}
+                          autoFocus
+                        />
+                        {errorPin && (
+                          <p className="text-xs text-red-600">{errorPin}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn-primary py-1 px-2 text-xs"
+                            disabled={guardandoPin}
+                            onClick={() => guardarPin(u)}
+                          >
+                            {guardandoPin ? "Guardando..." : "Guardar"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary py-1 px-2 text-xs"
+                            onClick={() => setCambiandoPinId(null)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          className="btn-secondary py-1 px-2 text-xs"
+                          onClick={() => alternarActivo(u)}
+                        >
+                          {u.activo ? "Desactivar" : "Activar"}
+                        </button>
+                        <button
+                          className="btn-secondary py-1 px-2 text-xs"
+                          onClick={() => empezarCambiarPin(u)}
+                        >
+                          Cambiar PIN
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
