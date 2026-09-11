@@ -1,6 +1,6 @@
 "use client";
 
-import { signIn, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { useState } from "react";
 
 export default function ConectarPage() {
@@ -12,6 +12,28 @@ export default function ConectarPage() {
   } | null>(null);
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [desconectando, setDesconectando] = useState(false);
+  const [mostrarToken, setMostrarToken] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  async function desconectar() {
+    setDesconectando(true);
+    setResultado(null);
+    setError("");
+    await signOut({ redirect: false });
+    setDesconectando(false);
+  }
+
+  async function copiarToken() {
+    try {
+      await navigator.clipboard.writeText(resultado!.refreshToken);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      // Si el navegador no permite copiar solo, no pasa nada: el valor
+      // sigue disponible para copiar a mano.
+    }
+  }
 
   async function crearPlanilla() {
     setCargando(true);
@@ -52,9 +74,25 @@ export default function ConectarPage() {
             Conectar con Google
           </button>
         ) : (
-          <p className="text-sm text-green-700">
-            Conectado como {session?.user?.email}. Ahora creá la planilla ⬇️
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-green-700">
+              Conectado como {session?.user?.email}. Ahora creá la planilla ⬇️
+            </p>
+            <p className="text-xs text-madera-500">
+              ¿No es la cuenta correcta, o necesitás generar una conexión
+              nueva (por ejemplo, porque la anterior dejó de funcionar)?{" "}
+              <button
+                type="button"
+                className="underline hover:text-madera-700 disabled:opacity-50"
+                onClick={desconectar}
+                disabled={desconectando}
+              >
+                {desconectando ? "Desconectando..." : "Desconectate acá"}
+              </button>{" "}
+              y volvé a conectar — así Google te va a pedir el permiso de
+              nuevo y se genera una conexión realmente nueva.
+            </p>
+          </div>
         )}
       </div>
 
@@ -89,9 +127,35 @@ export default function ConectarPage() {
             eso la app va a leer y escribir directamente en tu planilla, sin
             depender de esta pantalla.
           </p>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
+            ⚠️ Son datos sensibles: pegalos solo en la configuración de tu
+            hosting (ej. Vercel). Nunca los compartas por chat, email ni con
+            nadie que no necesite administrar la app.
+          </p>
           <div className="space-y-2 text-sm font-mono bg-madera-50 rounded-lg p-3 overflow-x-auto">
             <div>GOOGLE_SHEET_ID={resultado.spreadsheetId}</div>
-            <div>GOOGLE_REFRESH_TOKEN={resultado.refreshToken}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span>
+                GOOGLE_REFRESH_TOKEN=
+                {mostrarToken
+                  ? resultado.refreshToken
+                  : "•".repeat(24)}
+              </span>
+              <button
+                type="button"
+                className="btn-secondary py-0.5 px-2 text-xs font-sans shrink-0"
+                onClick={() => setMostrarToken((v) => !v)}
+              >
+                {mostrarToken ? "Ocultar" : "Mostrar"}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary py-0.5 px-2 text-xs font-sans shrink-0"
+                onClick={copiarToken}
+              >
+                {copiado ? "¡Copiado!" : "Copiar"}
+              </button>
+            </div>
           </div>
           <a
             href={resultado.url}
