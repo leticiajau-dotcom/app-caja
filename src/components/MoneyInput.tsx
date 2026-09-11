@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatearMilesEnVivo, desformatearMiles } from "@/lib/format";
 
 interface Props {
@@ -21,15 +21,17 @@ export default function MoneyInput({
   className,
 }: Props) {
   const [texto, setTexto] = useState(value ? String(value).replace(".", ",") : "");
+  // Último valor que nosotros mismos emitimos por onChange. Sirve para
+  // distinguir "el value cambió porque el usuario escribió" (no hay que
+  // tocar el texto, para no pisar algo como "0," a medio escribir) de
+  // "el value cambió desde afuera" (ej. el formulario se resetea después
+  // de guardar) — ahí sí hay que reflejarlo, incluso si es 0.
+  const ultimoValorEmitido = useRef(value);
 
-  // Si el valor cambia desde afuera (ej. se resetea el formulario), lo reflejamos.
   useEffect(() => {
-    if (value === 0 && texto !== "") return; // no pisar mientras el usuario escribe un 0,xx
-    const actual = desformatearMiles(texto);
-    if (actual !== value) {
-      setTexto(value ? formatearMilesEnVivo(String(value).replace(".", ",")) : "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (value === ultimoValorEmitido.current) return;
+    ultimoValorEmitido.current = value;
+    setTexto(value ? formatearMilesEnVivo(String(value).replace(".", ",")) : "");
   }, [value]);
 
   return (
@@ -42,7 +44,9 @@ export default function MoneyInput({
       onChange={(e) => {
         const formateado = formatearMilesEnVivo(e.target.value);
         setTexto(formateado);
-        onChange(desformatearMiles(formateado));
+        const nuevoValor = desformatearMiles(formateado);
+        ultimoValorEmitido.current = nuevoValor;
+        onChange(nuevoValor);
       }}
     />
   );
