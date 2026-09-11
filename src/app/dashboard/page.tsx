@@ -2,10 +2,10 @@ import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/internalSession";
 import { obtenerResumen } from "@/lib/repo";
+import type { Resumen } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { puedeVerResumenGeneral } from "@/lib/permisos";
 import ResumenMobile from "@/components/ResumenMobile";
-import type { Resumen } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,15 @@ export default async function DashboardPage() {
   const sesion = await obtenerSesion();
   if (!sesion) redirect("/login");
 
-  const resumenCompleto = await obtenerResumen();
+  // Si se cortó la conexión con Google (ej. el token venció), en vez del
+  // error genérico de Next.js mandamos a /conectar, igual que hace la
+  // página raíz ("/") ante el mismo problema.
+  let resumenCompleto;
+  try {
+    resumenCompleto = await obtenerResumen();
+  } catch {
+    redirect("/conectar");
+  }
   const mostrarResumenGeneral = puedeVerResumenGeneral(sesion.rol);
   const resumen = mostrarResumenGeneral
     ? resumenCompleto
