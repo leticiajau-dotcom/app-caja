@@ -14,7 +14,14 @@ interface UsuarioPublico {
 }
 
 function hoyISO() {
-  return new Date().toISOString().slice(0, 10);
+  // OJO: no usar toISOString() acá — devuelve la fecha en UTC, y en
+  // Argentina (UTC-3) de noche eso ya es "mañana". Armamos la fecha a
+  // mano con los componentes locales.
+  const d = new Date();
+  const anio = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${anio}-${mes}-${dia}`;
 }
 
 const VERDE_INGRESO = "oklch(52% 0.15 155)";

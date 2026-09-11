@@ -15,9 +15,19 @@ export function formatMoney(valor: number, moneda: string) {
   }
 }
 
+/** Convierte una fecha "yyyy-mm-dd" (sin hora) a un Date en el mediodía
+ *  local, en vez de dejar que `new Date("yyyy-mm-dd")` la interprete como
+ *  medianoche UTC — eso hace que, en Argentina (UTC-3), se muestre un día
+ *  antes del que realmente se cargó. Usamos el mediodía (no la medianoche)
+ *  para tener margen de sobra ante cualquier huso horario. */
+function fechaLocalDesdeISO(iso: string): Date {
+  const [anio, mes, dia] = iso.split("-").map(Number);
+  return new Date(anio, (mes || 1) - 1, dia || 1, 12);
+}
+
 export function formatFecha(iso: string) {
   if (!iso) return "";
-  const d = new Date(iso);
+  const d = fechaLocalDesdeISO(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("es-AR");
 }
@@ -26,7 +36,7 @@ export function formatFecha(iso: string) {
  *  el espacio es más ajustado, como la tabla de movimientos en celular. */
 export function formatFechaCorta(iso: string) {
   if (!iso) return "";
-  const d = new Date(iso);
+  const d = fechaLocalDesdeISO(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("es-AR", {
     day: "numeric",

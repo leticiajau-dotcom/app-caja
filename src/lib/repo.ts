@@ -235,6 +235,15 @@ export async function listarCuentas(soloActivas = false): Promise<Cuenta[]> {
   return soloActivas ? cuentas.filter((c) => c.activa) : cuentas;
 }
 
+/** Fecha de "hoy" en horario de Argentina (UTC-3, sin horario de verano),
+ *  para movimientos que se registran con la fecha del momento (ej. la
+ *  apertura de saldo al crear una cuenta). El servidor corre en UTC, así
+ *  que no alcanza con los componentes locales de un Date común. */
+function hoyArgentinaISO(): string {
+  const horaArgentina = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  return horaArgentina.toISOString().slice(0, 10);
+}
+
 export async function crearCuenta(datos: {
   nombre: string;
   moneda: string;
@@ -272,7 +281,7 @@ export async function crearCuenta(datos: {
   // el historial (no afecta el saldo: ver esAperturaSaldo en el cálculo).
   if (cuenta.saldoInicial !== 0) {
     await crearMovimiento({
-      fecha: cuenta.creadoEn.slice(0, 10),
+      fecha: hoyArgentinaISO(),
       tipo: cuenta.saldoInicial > 0 ? "ingreso" : "egreso",
       cuentaId: cuenta.id,
       monto: Math.abs(cuenta.saldoInicial),
