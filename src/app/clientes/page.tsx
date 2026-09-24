@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MONEDAS_SUGERIDAS, formatMoney } from "@/lib/format";
+import { MONEDAS_SUGERIDAS, formatFecha, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import { puedeVerClientes } from "@/lib/permisos";
 import type {
   Cliente,
   Cuenta,
   Modificacion,
+  Movimiento,
   Pago,
   Proyecto,
   ResumenProyecto,
@@ -73,6 +74,7 @@ export default function ClientesPage() {
     Record<string, ResumenProyecto>
   >({});
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [cargando, setCargando] = useState(true);
   const [sinPermiso, setSinPermiso] = useState(false);
 
@@ -117,28 +119,36 @@ export default function ClientesPage() {
   const [proyectoPagandoId, setProyectoPagandoId] = useState<string | null>(
     null
   );
+  const [modoPago, setModoPago] = useState<"nuevo" | "vincular">("nuevo");
   const [montoPago, setMontoPago] = useState(0);
   const [cuentaPagoId, setCuentaPagoId] = useState("");
   const [notaPago, setNotaPago] = useState("");
+  const [busquedaVincular, setBusquedaVincular] = useState("");
+  const [movimientoVinculadoId, setMovimientoVinculadoId] = useState<
+    string | null
+  >(null);
   const [guardandoPago, setGuardandoPago] = useState(false);
   const [errorPago, setErrorPago] = useState("");
 
   async function cargar() {
     setCargando(true);
-    const [rc, rs, ra] = await Promise.all([
+    const [rc, rs, ra, rm] = await Promise.all([
       fetch("/api/clients"),
       fetch("/api/session"),
       fetch("/api/accounts"),
+      fetch("/api/movements"),
     ]);
     const dc = await rc.json();
     const ds = await rs.json();
     const da = await ra.json();
+    const dm = await rm.json();
     setClientes(dc.clientes ?? []);
     setProyectos(dc.proyectos ?? []);
     setModificaciones(dc.modificaciones ?? []);
     setPagos(dc.pagos ?? []);
     setResumenPorProyecto(dc.resumenPorProyecto ?? {});
     setCuentas(da.cuentas ?? []);
+    setMovimientos(dm.movimientos ?? []);
     setSinPermiso(ds.sesion ? !puedeVerClientes(ds.sesion.rol) : false);
     setCargando(false);
   }
@@ -179,6 +189,32 @@ export default function ClientesPage() {
     cuentas.forEach((c) => m.set(c.id, c));
     return m;
   }, [cuentas]);
+
+  const movimientosPorId = useMemo(() => {
+    const m = new Map<string, Movimiento>();
+    movimientos.forEach((mv) => m.set(mv.id, mv));
+    return m;
+  }, [movimientos]);
+
+  const movimientosIdsVinculados = useMemo(
+    () => new Set(pagos.map((p) => p.movimientoId)),
+    [pagos]
+  );
+
+  /** Ingresos que todavía no están vinculados a ningún pago — candidatos
+   *  para "vincular uno existente" (evitar duplicar un pago ya cargado). */
+  const ingresosVinculables = useMemo(
+    () =>
+      movimientos
+        .filter(
+          (m) =>
+            m.tipo === "ingreso" &&
+            !m.anulado &&
+            !movimientosIdsVinculados.has(m.id)
+        )
+        .sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1)),
+    [movimientos, movimientosIdsVinculados]
+  );
 
   const clientesOrdenados = useMemo(
     () => [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre)),
@@ -303,31 +339,38 @@ export default function ClientesPage() {
 
   function empezarPago(proyectoId: string, monedaProyecto: string) {
     setProyectoPagandoId(proyectoId);
+    setModoPago("nuevo");
     setMontoPago(0);
     setNotaPago("");
     const primeraCuentaValida = cuentas.find(
       (c) => c.moneda === monedaProyecto && c.activa
     );
     setCuentaPagoId(primeraCuentaValida?.id ?? "");
+    setBusquedaVincular("");
+    setMovimientoVinculadoId(null);
     setErrorPago("");
   }
 
   async function guardarPago(proyectoId: string) {
     setErrorPago("");
-    if (!cuentaPagoId) {
+    if (modoPago === "nuevo" && !cuentaPagoId) {
       setErrorPago("Elegí en qué cuenta entró el pago.");
+      return;
+    }
+    if (modoPago === "vincular" && !movimientoVinculadoId) {
+      setErrorPago("Elegí cuál de tus movimientos ya cargados corresponde a este pago.");
       return;
     }
     setGuardandoPago(true);
     try {
+      const body =
+        modoPago === "nuevo"
+          ? { modo: "nuevo", monto: montoPago, cuentaId: cuentaPagoId, nota: notaPago }
+          : { modo: "vincular", movimientoId: movimientoVinculadoId, nota: notaPago };
       const res = await fetch(`/api/projects/${proyectoId}/payments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          monto: montoPago,
-          cuentaId: cuentaPagoId,
-          nota: notaPago,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -609,7 +652,10 @@ export default function ClientesPage() {
                                       >
                                         <span>
                                           <span className="text-madera-400">
-                                            {fechaCorta(pg.creadoEn)}
+                                            {formatFecha(
+                                              movimientosPorId.get(pg.movimientoId)
+                                                ?.fecha ?? pg.creadoEn.slice(0, 10)
+                                            )}
                                           </span>{" "}
                                           —{" "}
                                           {cuentasPorId.get(pg.cuentaId)?.nombre ??
@@ -629,45 +675,146 @@ export default function ClientesPage() {
                                   </ul>
                                 )}
                                 {proyectoPagandoId === p.id ? (
-                                  <div className="grid gap-2 sm:grid-cols-3 items-start bg-white rounded-lg p-2.5">
-                                    <MoneyInput
-                                      value={montoPago}
-                                      onChange={setMontoPago}
-                                      placeholder="Monto"
-                                    />
-                                    <select
-                                      className="input"
-                                      value={cuentaPagoId}
-                                      onChange={(e) => setCuentaPagoId(e.target.value)}
-                                    >
-                                      <option value="" disabled>
-                                        Cuenta que lo recibe
-                                      </option>
-                                      {cuentasValidas.map((cu) => (
-                                        <option key={cu.id} value={cu.id}>
-                                          {cu.nombre} ({cu.moneda})
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <input
-                                      className="input"
-                                      placeholder="Nota (opcional)"
-                                      value={notaPago}
-                                      onChange={(e) => setNotaPago(e.target.value)}
-                                    />
-                                    {cuentasValidas.length === 0 && (
-                                      <p className="text-xs text-amber-700 sm:col-span-3">
-                                        No hay cuentas activas en {p.moneda}. Creá
-                                        una en "Cuentas" para poder registrar el
-                                        pago.
-                                      </p>
+                                  <div className="bg-white rounded-lg p-2.5 space-y-2">
+                                    <div className="flex gap-1.5">
+                                      <button
+                                        type="button"
+                                        className={`py-1 px-2.5 text-xs rounded-md border ${
+                                          modoPago === "nuevo"
+                                            ? "bg-madera-700 text-white border-madera-700"
+                                            : "border-madera-200 text-madera-600"
+                                        }`}
+                                        onClick={() => setModoPago("nuevo")}
+                                      >
+                                        Pago nuevo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`py-1 px-2.5 text-xs rounded-md border ${
+                                          modoPago === "vincular"
+                                            ? "bg-madera-700 text-white border-madera-700"
+                                            : "border-madera-200 text-madera-600"
+                                        }`}
+                                        onClick={() => setModoPago("vincular")}
+                                      >
+                                        Vincular uno que ya cargué
+                                      </button>
+                                    </div>
+
+                                    {modoPago === "nuevo" ? (
+                                      <div className="grid gap-2 sm:grid-cols-3 items-start">
+                                        <MoneyInput
+                                          value={montoPago}
+                                          onChange={setMontoPago}
+                                          placeholder="Monto"
+                                        />
+                                        <select
+                                          className="input"
+                                          value={cuentaPagoId}
+                                          onChange={(e) => setCuentaPagoId(e.target.value)}
+                                        >
+                                          <option value="" disabled>
+                                            Cuenta que lo recibe
+                                          </option>
+                                          {cuentasValidas.map((cu) => (
+                                            <option key={cu.id} value={cu.id}>
+                                              {cu.nombre} ({cu.moneda})
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          className="input"
+                                          placeholder="Nota (opcional)"
+                                          value={notaPago}
+                                          onChange={(e) => setNotaPago(e.target.value)}
+                                        />
+                                        {cuentasValidas.length === 0 && (
+                                          <p className="text-xs text-amber-700 sm:col-span-3">
+                                            No hay cuentas activas en {p.moneda}. Creá
+                                            una en "Cuentas" para poder registrar el
+                                            pago.
+                                          </p>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      (() => {
+                                        const candidatos = ingresosVinculables
+                                          .filter(
+                                            (m) =>
+                                              cuentasPorId.get(m.cuentaId)?.moneda ===
+                                              p.moneda
+                                          )
+                                          .filter((m) => {
+                                            const texto = busquedaVincular
+                                              .trim()
+                                              .toLowerCase();
+                                            if (!texto) return true;
+                                            const cuentaNombre =
+                                              cuentasPorId.get(m.cuentaId)?.nombre ?? "";
+                                            return `${m.categoria} ${m.descripcion} ${cuentaNombre}`
+                                              .toLowerCase()
+                                              .includes(texto);
+                                          })
+                                          .slice(0, 15);
+                                        return (
+                                          <div className="space-y-2">
+                                            <input
+                                              className="input"
+                                              placeholder="Buscar por cuenta, categoría, descripción..."
+                                              value={busquedaVincular}
+                                              onChange={(e) => {
+                                                setBusquedaVincular(e.target.value);
+                                                setMovimientoVinculadoId(null);
+                                              }}
+                                            />
+                                            <div className="max-h-48 overflow-y-auto border border-madera-100 rounded-lg divide-y divide-madera-50">
+                                              {candidatos.length === 0 && (
+                                                <p className="text-xs text-madera-400 p-2">
+                                                  No hay ingresos en {p.moneda} sin
+                                                  vincular que coincidan.
+                                                </p>
+                                              )}
+                                              {candidatos.map((m) => (
+                                                <button
+                                                  type="button"
+                                                  key={m.id}
+                                                  onClick={() => setMovimientoVinculadoId(m.id)}
+                                                  className={`w-full text-left px-2 py-1.5 text-xs flex justify-between gap-2 hover:bg-madera-50 ${
+                                                    movimientoVinculadoId === m.id
+                                                      ? "bg-madera-100"
+                                                      : ""
+                                                  }`}
+                                                >
+                                                  <span className="min-w-0 truncate">
+                                                    {formatFecha(m.fecha)} —{" "}
+                                                    {cuentasPorId.get(m.cuentaId)?.nombre}
+                                                    {m.categoria ? ` · ${m.categoria}` : ""}
+                                                    {m.descripcion ? ` · ${m.descripcion}` : ""}
+                                                  </span>
+                                                  <span className="shrink-0 font-medium">
+                                                    {formatMoney(m.monto, p.moneda)}
+                                                  </span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                            <input
+                                              className="input"
+                                              placeholder="Nota (opcional)"
+                                              value={notaPago}
+                                              onChange={(e) => setNotaPago(e.target.value)}
+                                            />
+                                          </div>
+                                        );
+                                      })()
                                     )}
-                                    <div className="flex gap-2 sm:col-span-3">
+
+                                    <div className="flex gap-2">
                                       <button
                                         type="button"
                                         className="btn-primary py-1 px-3 text-xs"
                                         disabled={
-                                          guardandoPago || cuentasValidas.length === 0
+                                          guardandoPago ||
+                                          (modoPago === "nuevo" && cuentasValidas.length === 0)
                                         }
                                         onClick={() => guardarPago(p.id)}
                                       >
@@ -682,9 +829,7 @@ export default function ClientesPage() {
                                       </button>
                                     </div>
                                     {errorPago && (
-                                      <p className="text-xs text-red-600 sm:col-span-3">
-                                        {errorPago}
-                                      </p>
+                                      <p className="text-xs text-red-600">{errorPago}</p>
                                     )}
                                   </div>
                                 ) : (

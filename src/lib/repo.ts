@@ -893,6 +893,10 @@ export async function agregarModificacion(
   return modificacion;
 }
 
+function filaPago(p: Pago): (string | number)[] {
+  return [p.id, p.proyectoId, p.monto, p.cuentaId, p.movimientoId, p.nota, p.usuarioId, p.creadoEn];
+}
+
 /** Registra un pago del cliente contra un proyecto: crea el ingreso real
  *  en Movimientos (en la cuenta elegida) y el registro de Pago que
  *  referencia a ese movimiento. La cuenta tiene que ser de la misma
@@ -945,16 +949,55 @@ export async function agregarPago(
     usuarioId: datos.usuarioId,
     creadoEn: new Date().toISOString(),
   };
-  await agregarFila(TABS.PAGOS, [
-    pago.id,
-    pago.proyectoId,
-    pago.monto,
-    pago.cuentaId,
-    pago.movimientoId,
-    pago.nota,
-    pago.usuarioId,
-    pago.creadoEn,
+  await agregarFila(TABS.PAGOS, filaPago(pago));
+
+  return { pago, movimiento };
+}
+
+/** Vincula un pago a un ingreso que YA existe en Movimientos (en vez de
+ *  crear uno nuevo) — para no duplicar en la caja un adelanto/pago que ya
+ *  se había cargado antes de tener esta pantalla de Clientes. */
+export async function vincularPago(
+  proyectoId: string,
+  datos: { movimientoId: string; nota?: string; usuarioId: string }
+): Promise<{ pago: Pago; movimiento: Movimiento }> {
+  const [proyectos, cuentas, pagosExistentes, encontrado] = await Promise.all([
+    listarProyectos(),
+    listarCuentas(),
+    listarPagos(),
+    buscarMovimientoPorId(datos.movimientoId),
   ]);
+  const proyecto = proyectos.find((p) => p.id === proyectoId);
+  if (!proyecto) throw new Error("Proyecto no encontrado.");
+  if (!encontrado) throw new Error("Ese movimiento no existe.");
+  const { movimiento } = encontrado;
+  if (movimiento.tipo !== "ingreso") {
+    throw new Error("Solo se puede vincular un movimiento de tipo ingreso.");
+  }
+  if (movimiento.anulado) {
+    throw new Error("Ese movimiento está anulado, no se puede vincular.");
+  }
+  if (pagosExistentes.some((p) => p.movimientoId === movimiento.id)) {
+    throw new Error("Ese movimiento ya está vinculado a otro pago.");
+  }
+  const cuenta = cuentas.find((c) => c.id === movimiento.cuentaId);
+  if (cuenta && cuenta.moneda !== proyecto.moneda) {
+    throw new Error(
+      `Este proyecto es en ${proyecto.moneda}, y ese movimiento es en ${cuenta.moneda}.`
+    );
+  }
+
+  const pago: Pago = {
+    id: randomUUID(),
+    proyectoId,
+    monto: movimiento.monto,
+    cuentaId: movimiento.cuentaId,
+    movimientoId: movimiento.id,
+    nota: (datos.nota ?? "").trim(),
+    usuarioId: datos.usuarioId,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.PAGOS, filaPago(pago));
 
   return { pago, movimiento };
 }
