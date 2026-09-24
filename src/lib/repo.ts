@@ -813,8 +813,8 @@ function rowToPago(r: Record<string, string>): Pago {
     id: r.id,
     proyectoId: r.proyectoId,
     monto: toNum(r.monto),
-    cuentaId: r.cuentaId,
-    movimientoId: r.movimientoId,
+    cuentaId: r.cuentaId || null,
+    movimientoId: r.movimientoId || null,
     nota: r.nota || "",
     usuarioId: r.usuarioId,
     creadoEn: r.creadoEn,
@@ -852,7 +852,7 @@ export function calcularResumenProyectos(
       .filter(
         (pago) =>
           pago.proyectoId === p.id &&
-          !anuladoPorMovimientoId.get(pago.movimientoId)
+          !(pago.movimientoId && anuladoPorMovimientoId.get(pago.movimientoId))
       )
       .reduce((acc, pago) => acc + pago.monto, 0);
     const importe = p.precio + ajustes;
@@ -894,7 +894,16 @@ export async function agregarModificacion(
 }
 
 function filaPago(p: Pago): (string | number)[] {
-  return [p.id, p.proyectoId, p.monto, p.cuentaId, p.movimientoId, p.nota, p.usuarioId, p.creadoEn];
+  return [
+    p.id,
+    p.proyectoId,
+    p.monto,
+    p.cuentaId ?? "",
+    p.movimientoId ?? "",
+    p.nota,
+    p.usuarioId,
+    p.creadoEn,
+  ];
 }
 
 /** Registra un pago del cliente contra un proyecto: crea el ingreso real
@@ -1000,4 +1009,36 @@ export async function vincularPago(
   await agregarFila(TABS.PAGOS, filaPago(pago));
 
   return { pago, movimiento };
+}
+
+/** Registra un pago "histórico": un adelanto que el cliente ya había
+ *  pagado ANTES de empezar a usar la app, y por lo tanto nunca se cargó
+ *  como ingreso en Movimientos. A propósito no toca ninguna cuenta ni crea
+ *  ningún movimiento — solo sirve para que el saldo por cobrar del
+ *  proyecto arranque reflejando lo que ya se cobró. Pensado como recurso
+ *  transitorio para la carga inicial de proyectos viejos. */
+export async function agregarPagoHistorico(
+  proyectoId: string,
+  datos: { monto: number; nota?: string; usuarioId: string }
+): Promise<Pago> {
+  if (datos.monto <= 0) throw new Error("El monto debe ser mayor a 0.");
+
+  const proyectos = await listarProyectos();
+  if (!proyectos.some((p) => p.id === proyectoId)) {
+    throw new Error("Proyecto no encontrado.");
+  }
+
+  const pago: Pago = {
+    id: randomUUID(),
+    proyectoId,
+    monto: datos.monto,
+    cuentaId: null,
+    movimientoId: null,
+    nota: (datos.nota ?? "").trim(),
+    usuarioId: datos.usuarioId,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.PAGOS, filaPago(pago));
+
+  return pago;
 }

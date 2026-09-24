@@ -47,7 +47,7 @@ export async function GET() {
     );
     const pagosConEstado = pagos.map((p) => ({
       ...p,
-      anulado: Boolean(anuladoPorMovimientoId.get(p.movimientoId)),
+      anulado: Boolean(p.movimientoId && anuladoPorMovimientoId.get(p.movimientoId)),
     }));
     return NextResponse.json({
       clientes,

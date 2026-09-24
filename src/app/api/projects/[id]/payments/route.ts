@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerClientes } from "@/lib/permisos";
-import { agregarPago, vincularPago } from "@/lib/repo";
+import { agregarPago, agregarPagoHistorico, vincularPago } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,11 @@ const PagoSchema = z.union([
   z.object({
     modo: z.literal("vincular"),
     movimientoId: z.string().min(1),
+    nota: z.string().optional(),
+  }),
+  z.object({
+    modo: z.literal("historico"),
+    monto: z.number().gt(0, "El monto tiene que ser mayor a 0."),
     nota: z.string().optional(),
   }),
 ]);
@@ -39,7 +44,14 @@ export async function POST(
     const resultado =
       datos.modo === "nuevo"
         ? await agregarPago(params.id, { ...datos, usuarioId: sesion.usuarioId })
-        : await vincularPago(params.id, { ...datos, usuarioId: sesion.usuarioId });
+        : datos.modo === "vincular"
+        ? await vincularPago(params.id, { ...datos, usuarioId: sesion.usuarioId })
+        : {
+            pago: await agregarPagoHistorico(params.id, {
+              ...datos,
+              usuarioId: sesion.usuarioId,
+            }),
+          };
     return NextResponse.json(resultado);
   } catch (err) {
     return manejarError(err);

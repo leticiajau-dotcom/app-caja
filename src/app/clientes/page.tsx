@@ -119,7 +119,9 @@ export default function ClientesPage() {
   const [proyectoPagandoId, setProyectoPagandoId] = useState<string | null>(
     null
   );
-  const [modoPago, setModoPago] = useState<"nuevo" | "vincular">("nuevo");
+  const [modoPago, setModoPago] = useState<"nuevo" | "vincular" | "historico">(
+    "nuevo"
+  );
   const [montoPago, setMontoPago] = useState(0);
   const [cuentaPagoId, setCuentaPagoId] = useState("");
   const [notaPago, setNotaPago] = useState("");
@@ -366,7 +368,9 @@ export default function ClientesPage() {
       const body =
         modoPago === "nuevo"
           ? { modo: "nuevo", monto: montoPago, cuentaId: cuentaPagoId, nota: notaPago }
-          : { modo: "vincular", movimientoId: movimientoVinculadoId, nota: notaPago };
+          : modoPago === "vincular"
+          ? { modo: "vincular", movimientoId: movimientoVinculadoId, nota: notaPago }
+          : { modo: "historico", monto: montoPago, nota: notaPago };
       const res = await fetch(`/api/projects/${proyectoId}/payments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -653,13 +657,17 @@ export default function ClientesPage() {
                                         <span>
                                           <span className="text-madera-400">
                                             {formatFecha(
-                                              movimientosPorId.get(pg.movimientoId)
-                                                ?.fecha ?? pg.creadoEn.slice(0, 10)
+                                              (pg.movimientoId &&
+                                                movimientosPorId.get(pg.movimientoId)
+                                                  ?.fecha) ||
+                                                pg.creadoEn.slice(0, 10)
                                             )}
                                           </span>{" "}
                                           —{" "}
-                                          {cuentasPorId.get(pg.cuentaId)?.nombre ??
-                                            "?"}
+                                          {pg.cuentaId
+                                            ? cuentasPorId.get(pg.cuentaId)?.nombre ??
+                                              "?"
+                                            : "Pago histórico"}
                                           {pg.nota ? ` (${pg.nota})` : ""}
                                           {pg.anulado ? " · anulado" : ""}
                                         </span>
@@ -699,6 +707,17 @@ export default function ClientesPage() {
                                       >
                                         Vincular uno que ya cargué
                                       </button>
+                                      <button
+                                        type="button"
+                                        className={`py-1 px-2.5 text-xs rounded-md border ${
+                                          modoPago === "historico"
+                                            ? "bg-madera-700 text-white border-madera-700"
+                                            : "border-madera-200 text-madera-600"
+                                        }`}
+                                        onClick={() => setModoPago("historico")}
+                                      >
+                                        Pago histórico
+                                      </button>
                                     </div>
 
                                     {modoPago === "nuevo" ? (
@@ -736,7 +755,7 @@ export default function ClientesPage() {
                                           </p>
                                         )}
                                       </div>
-                                    ) : (
+                                    ) : modoPago === "vincular" ? (
                                       (() => {
                                         const candidatos = ingresosVinculables
                                           .filter(
@@ -806,6 +825,31 @@ export default function ClientesPage() {
                                           </div>
                                         );
                                       })()
+                                    ) : null}
+
+                                    {modoPago === "historico" && (
+                                      <div className="space-y-2">
+                                        <div className="grid gap-2 sm:grid-cols-2 items-start">
+                                          <MoneyInput
+                                            value={montoPago}
+                                            onChange={setMontoPago}
+                                            placeholder="Monto"
+                                          />
+                                          <input
+                                            className="input"
+                                            placeholder="Nota (opcional)"
+                                            value={notaPago}
+                                            onChange={(e) => setNotaPago(e.target.value)}
+                                          />
+                                        </div>
+                                        <p className="text-xs text-madera-500">
+                                          Para adelantos que el cliente ya te pagó
+                                          antes de empezar a usar la app. No crea
+                                          ningún movimiento en la caja: solo
+                                          actualiza el saldo por cobrar de este
+                                          proyecto.
+                                        </p>
+                                      </div>
                                     )}
 
                                     <div className="flex gap-2">

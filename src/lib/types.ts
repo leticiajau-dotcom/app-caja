@@ -149,16 +149,22 @@ export interface Modificacion {
 }
 
 /** Un pago que hizo el cliente contra un proyecto (adelanto, parcial o
- *  final). Cada pago genera además un ingreso real en Movimientos (en la
- *  cuenta elegida) — acá solo queda la referencia a ese movimiento para
+ *  final). El caso normal genera además un ingreso real en Movimientos
+ *  (en la cuenta elegida) — acá queda la referencia a ese movimiento para
  *  poder calcular cuánto pagó el cliente y descontarlo si ese ingreso se
- *  llegara a anular. */
+ *  llegara a anular.
+ *
+ *  cuentaId y movimientoId son null solo para un pago "histórico": un
+ *  adelanto que el cliente ya había pagado ANTES de empezar a usar la
+ *  app (nunca se cargó como ingreso en ningún lado), cargado a mano
+ *  únicamente para que el saldo por cobrar del proyecto arranque bien —
+ *  adrede no toca ninguna cuenta ni movimiento real. */
 export interface Pago {
   id: string;
   proyectoId: string;
   monto: number;
-  cuentaId: string;
-  movimientoId: string;
+  cuentaId: string | null;
+  movimientoId: string | null;
   nota: string;
   usuarioId: string;
   creadoEn: string;
