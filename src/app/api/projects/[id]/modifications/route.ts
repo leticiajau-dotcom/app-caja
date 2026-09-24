@@ -2,18 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerClientes } from "@/lib/permisos";
-import { agregarProyecto } from "@/lib/repo";
+import { agregarModificacion } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
-const AgregarProyectoSchema = z.object({
-  nombre: z.string().min(1),
-  descripcion: z.string().optional(),
-  moneda: z.string().min(1).default("ARS"),
-  precio: z.number().gt(0, "El precio tiene que ser mayor a 0."),
+const ModificacionSchema = z.object({
+  nota: z.string().min(1),
+  ajuste: z.number().default(0),
 });
 
-// Admin y socio pueden agregarle un proyecto nuevo a un cliente existente.
+// Admin y socio pueden registrar cambios que pidió el cliente sobre un
+// proyecto (con o sin ajuste de importe).
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
@@ -24,9 +23,12 @@ export async function POST(
       throw new ApiError("No tenés acceso a Clientes.", 403);
     }
     const body = await req.json();
-    const datos = AgregarProyectoSchema.parse(body);
-    const proyecto = await agregarProyecto(params.id, datos);
-    return NextResponse.json({ proyecto });
+    const datos = ModificacionSchema.parse(body);
+    const modificacion = await agregarModificacion(params.id, {
+      ...datos,
+      usuarioId: sesion.usuarioId,
+    });
+    return NextResponse.json({ modificacion });
   } catch (err) {
     return manejarError(err);
   }

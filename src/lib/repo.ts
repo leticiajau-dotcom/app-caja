@@ -16,9 +16,12 @@ import type {
   Cliente,
   Configuracion,
   Cuenta,
+  Modificacion,
   Movimiento,
+  Pago,
   Proyecto,
   Resumen,
+  ResumenProyecto,
   Rol,
   SaldoCuenta,
   SaldoGrupoResponsables,
@@ -678,10 +681,15 @@ function rowToProyecto(r: Record<string, string>): Proyecto {
     id: r.id,
     clienteId: r.clienteId,
     nombre: r.nombre,
+    descripcion: r.descripcion || "",
     moneda: r.moneda || "ARS",
     precio: toNum(r.precio),
     creadoEn: r.creadoEn,
   };
+}
+
+function filaProyecto(p: Proyecto): (string | number)[] {
+  return [p.id, p.clienteId, p.nombre, p.moneda, p.precio, p.creadoEn, p.descripcion];
 }
 
 export async function listarClientes(): Promise<Cliente[]> {
@@ -699,6 +707,7 @@ export async function listarProyectos(): Promise<Proyecto[]> {
 export async function crearCliente(datos: {
   nombre: string;
   proyecto: string;
+  descripcion?: string;
   moneda: string;
   precio: number;
 }): Promise<{ cliente: Cliente; proyecto: Proyecto }> {
@@ -727,18 +736,12 @@ export async function crearCliente(datos: {
     id: randomUUID(),
     clienteId: cliente.id,
     nombre: nombreProyecto,
+    descripcion: (datos.descripcion ?? "").trim(),
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
     precio: datos.precio || 0,
     creadoEn: cliente.creadoEn,
   };
-  await agregarFila(TABS.PROYECTOS, [
-    proyecto.id,
-    proyecto.clienteId,
-    proyecto.nombre,
-    proyecto.moneda,
-    proyecto.precio,
-    proyecto.creadoEn,
-  ]);
+  await agregarFila(TABS.PROYECTOS, filaProyecto(proyecto));
 
   return { cliente, proyecto };
 }
@@ -746,7 +749,7 @@ export async function crearCliente(datos: {
 /** Agrega un proyecto nuevo a un cliente ya existente. */
 export async function agregarProyecto(
   clienteId: string,
-  datos: { nombre: string; moneda: string; precio: number }
+  datos: { nombre: string; descripcion?: string; moneda: string; precio: number }
 ): Promise<Proyecto> {
   const nombreProyecto = datos.nombre.trim();
   if (!nombreProyecto) throw new Error("Ingresá el nombre del proyecto.");
@@ -771,17 +774,187 @@ export async function agregarProyecto(
     id: randomUUID(),
     clienteId,
     nombre: nombreProyecto,
+    descripcion: (datos.descripcion ?? "").trim(),
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
     precio: datos.precio || 0,
     creadoEn: new Date().toISOString(),
   };
-  await agregarFila(TABS.PROYECTOS, [
-    proyecto.id,
-    proyecto.clienteId,
-    proyecto.nombre,
-    proyecto.moneda,
-    proyecto.precio,
-    proyecto.creadoEn,
-  ]);
+  await agregarFila(TABS.PROYECTOS, filaProyecto(proyecto));
   return proyecto;
+}
+
+// ---------------------------------------------------------------------------
+// Modificaciones y Pagos (por proyecto)
+// ---------------------------------------------------------------------------
+// El precio de un proyecto puede ir cambiando (el cliente pide agregar o
+// sacar algo): cada cambio queda registrado como una Modificación, con una
+// nota y el ajuste en el importe (puede ser 0 si es solo un comentario). El
+// importe final de un proyecto es su precio base más la suma de esos
+// ajustes — ver calcularResumenProyectos.
+//
+// Los Pagos que hace el cliente generan, además, un ingreso real en
+// Movimientos (en la cuenta que se elija) para que ese dinero quede
+// reflejado en la caja como cualquier otro ingreso; acá solo se guarda la
+// referencia a ese movimiento.
+
+function rowToModificacion(r: Record<string, string>): Modificacion {
+  return {
+    id: r.id,
+    proyectoId: r.proyectoId,
+    nota: r.nota,
+    ajuste: toNum(r.ajuste),
+    usuarioId: r.usuarioId,
+    creadoEn: r.creadoEn,
+  };
+}
+
+function rowToPago(r: Record<string, string>): Pago {
+  return {
+    id: r.id,
+    proyectoId: r.proyectoId,
+    monto: toNum(r.monto),
+    cuentaId: r.cuentaId,
+    movimientoId: r.movimientoId,
+    nota: r.nota || "",
+    usuarioId: r.usuarioId,
+    creadoEn: r.creadoEn,
+  };
+}
+
+export async function listarModificaciones(): Promise<Modificacion[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.MODIFICACIONES);
+  return rows.map(rowToModificacion);
+}
+
+export async function listarPagos(): Promise<Pago[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.PAGOS);
+  return rows.map(rowToPago);
+}
+
+/** Calcula, para cada proyecto, el importe final (precio + ajustes), lo
+ *  pagado (sin contar pagos cuyo ingreso haya sido anulado en Movimientos)
+ *  y el saldo por cobrar. */
+export function calcularResumenProyectos(
+  proyectos: Proyecto[],
+  modificaciones: Modificacion[],
+  pagos: Pago[],
+  movimientos: Movimiento[]
+): Record<string, ResumenProyecto> {
+  const anuladoPorMovimientoId = new Map(
+    movimientos.map((m) => [m.id, m.anulado])
+  );
+  const resumen: Record<string, ResumenProyecto> = {};
+  for (const p of proyectos) {
+    const ajustes = modificaciones
+      .filter((m) => m.proyectoId === p.id)
+      .reduce((acc, m) => acc + m.ajuste, 0);
+    const pagado = pagos
+      .filter(
+        (pago) =>
+          pago.proyectoId === p.id &&
+          !anuladoPorMovimientoId.get(pago.movimientoId)
+      )
+      .reduce((acc, pago) => acc + pago.monto, 0);
+    const importe = p.precio + ajustes;
+    resumen[p.id] = { proyectoId: p.id, importe, pagado, saldo: importe - pagado };
+  }
+  return resumen;
+}
+
+/** Agrega una modificación (cambio pedido por el cliente) a un proyecto. */
+export async function agregarModificacion(
+  proyectoId: string,
+  datos: { nota: string; ajuste: number; usuarioId: string }
+): Promise<Modificacion> {
+  const nota = datos.nota.trim();
+  if (!nota) throw new Error("Contá qué cambió.");
+
+  const proyectos = await listarProyectos();
+  if (!proyectos.some((p) => p.id === proyectoId)) {
+    throw new Error("Proyecto no encontrado.");
+  }
+
+  const modificacion: Modificacion = {
+    id: randomUUID(),
+    proyectoId,
+    nota,
+    ajuste: datos.ajuste || 0,
+    usuarioId: datos.usuarioId,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.MODIFICACIONES, [
+    modificacion.id,
+    modificacion.proyectoId,
+    modificacion.nota,
+    modificacion.ajuste,
+    modificacion.usuarioId,
+    modificacion.creadoEn,
+  ]);
+  return modificacion;
+}
+
+/** Registra un pago del cliente contra un proyecto: crea el ingreso real
+ *  en Movimientos (en la cuenta elegida) y el registro de Pago que
+ *  referencia a ese movimiento. La cuenta tiene que ser de la misma
+ *  moneda que el proyecto, para que el saldo por cobrar no mezcle
+ *  monedas. */
+export async function agregarPago(
+  proyectoId: string,
+  datos: { monto: number; cuentaId: string; nota?: string; usuarioId: string }
+): Promise<{ pago: Pago; movimiento: Movimiento }> {
+  if (datos.monto <= 0) throw new Error("El monto debe ser mayor a 0.");
+
+  const [proyectos, clientes, cuentas] = await Promise.all([
+    listarProyectos(),
+    listarClientes(),
+    listarCuentas(),
+  ]);
+  const proyecto = proyectos.find((p) => p.id === proyectoId);
+  if (!proyecto) throw new Error("Proyecto no encontrado.");
+  const cliente = clientes.find((c) => c.id === proyecto.clienteId);
+  const cuenta = cuentas.find((c) => c.id === datos.cuentaId);
+  if (!cuenta) throw new Error("Cuenta no encontrada.");
+  if (cuenta.moneda !== proyecto.moneda) {
+    throw new Error(
+      `Este proyecto es en ${proyecto.moneda}: elegí una cuenta en la misma moneda.`
+    );
+  }
+
+  const nota = (datos.nota ?? "").trim();
+  const descripcion = [cliente?.nombre, proyecto.nombre, nota]
+    .filter(Boolean)
+    .join(" — ");
+
+  const movimiento = await crearMovimiento({
+    fecha: hoyArgentinaISO(),
+    tipo: "ingreso",
+    cuentaId: datos.cuentaId,
+    monto: datos.monto,
+    categoria: "Pago de cliente",
+    descripcion,
+    usuarioId: datos.usuarioId,
+  });
+
+  const pago: Pago = {
+    id: randomUUID(),
+    proyectoId,
+    monto: datos.monto,
+    cuentaId: datos.cuentaId,
+    movimientoId: movimiento.id,
+    nota,
+    usuarioId: datos.usuarioId,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.PAGOS, [
+    pago.id,
+    pago.proyectoId,
+    pago.monto,
+    pago.cuentaId,
+    pago.movimientoId,
+    pago.nota,
+    pago.usuarioId,
+    pago.creadoEn,
+  ]);
+
+  return { pago, movimiento };
 }

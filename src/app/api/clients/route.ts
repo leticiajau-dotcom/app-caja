@@ -2,13 +2,22 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerClientes } from "@/lib/permisos";
-import { crearCliente, listarClientes, listarProyectos } from "@/lib/repo";
+import {
+  calcularResumenProyectos,
+  crearCliente,
+  listarClientes,
+  listarModificaciones,
+  listarMovimientos,
+  listarPagos,
+  listarProyectos,
+} from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
 const CrearClienteSchema = z.object({
   nombre: z.string().min(1),
   proyecto: z.string().min(1),
+  descripcion: z.string().optional(),
   moneda: z.string().min(1).default("ARS"),
   precio: z.number().gt(0, "El precio tiene que ser mayor a 0."),
 });
@@ -19,11 +28,34 @@ export async function GET() {
     if (!puedeVerClientes(sesion.rol)) {
       throw new ApiError("No tenés acceso a Clientes.", 403);
     }
-    const [clientes, proyectos] = await Promise.all([
-      listarClientes(),
-      listarProyectos(),
-    ]);
-    return NextResponse.json({ clientes, proyectos });
+    const [clientes, proyectos, modificaciones, pagos, movimientos] =
+      await Promise.all([
+        listarClientes(),
+        listarProyectos(),
+        listarModificaciones(),
+        listarPagos(),
+        listarMovimientos(),
+      ]);
+    const resumenPorProyecto = calcularResumenProyectos(
+      proyectos,
+      modificaciones,
+      pagos,
+      movimientos
+    );
+    const anuladoPorMovimientoId = new Map(
+      movimientos.map((m) => [m.id, m.anulado])
+    );
+    const pagosConEstado = pagos.map((p) => ({
+      ...p,
+      anulado: Boolean(anuladoPorMovimientoId.get(p.movimientoId)),
+    }));
+    return NextResponse.json({
+      clientes,
+      proyectos,
+      modificaciones,
+      pagos: pagosConEstado,
+      resumenPorProyecto,
+    });
   } catch (err) {
     return manejarError(err);
   }

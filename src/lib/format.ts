@@ -64,14 +64,19 @@ export function simboloMoneda(moneda: string) {
 }
 
 /** Formatea un número a texto con separador de miles (punto) mientras se
- *  escribe, sin forzar decimales todavía (para no pelear con el cursor). */
+ *  escribe, sin forzar decimales todavía (para no pelear con el cursor).
+ *  Preserva un "-" inicial (usado, por ejemplo, para un ajuste de
+ *  modificación que resta del importe de un proyecto). */
 export function formatearMilesEnVivo(valorCrudo: string) {
+  const negativo = valorCrudo.trim().startsWith("-");
   const limpio = valorCrudo.replace(/[^\d,]/g, "");
   const [entero, decimales] = limpio.split(",");
   const enteroFormateado = (entero || "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return decimales !== undefined
-    ? `${enteroFormateado},${decimales.slice(0, 2)}`
-    : enteroFormateado;
+  const base =
+    decimales !== undefined
+      ? `${enteroFormateado},${decimales.slice(0, 2)}`
+      : enteroFormateado;
+  return negativo && base ? `-${base}` : base;
 }
 
 /** Convierte el texto formateado ("1.234,50") de vuelta a número (1234.5). */

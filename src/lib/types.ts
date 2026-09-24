@@ -124,11 +124,51 @@ export interface Proyecto {
   clienteId: string;
   /** Único dentro de los proyectos de ese mismo cliente. */
   nombre: string;
+  /** Detalle opcional del proyecto (igual que categoría/descripción en
+   *  Movimientos: el nombre es el dato corto, esto es el detalle largo). */
+  descripcion: string;
   moneda: string;
-  /** Importe total acordado del proyecto. Más adelante se va a poder
-   *  registrar adelantos/pagos parciales contra este importe (y, más
-   *  adelante todavía, costos), pero por ahora es solo el valor de
-   *  referencia. */
+  /** Precio base acordado del proyecto. El importe total real es este
+   *  precio más la suma de los ajustes de sus Modificaciones — ver
+   *  ResumenProyecto, que ya viene calculado desde el servidor. */
   precio: number;
   creadoEn: string;
+}
+
+/** Un cambio que pidió el cliente sobre un proyecto ya acordado (agregar o
+ *  sacar algo, etc.), con el ajuste en el importe que corresponde a ese
+ *  cambio (puede ser 0 si es solo una nota, sin costo). El importe total
+ *  del proyecto es precio + suma de los ajustes de sus modificaciones. */
+export interface Modificacion {
+  id: string;
+  proyectoId: string;
+  nota: string;
+  ajuste: number;
+  usuarioId: string;
+  creadoEn: string;
+}
+
+/** Un pago que hizo el cliente contra un proyecto (adelanto, parcial o
+ *  final). Cada pago genera además un ingreso real en Movimientos (en la
+ *  cuenta elegida) — acá solo queda la referencia a ese movimiento para
+ *  poder calcular cuánto pagó el cliente y descontarlo si ese ingreso se
+ *  llegara a anular. */
+export interface Pago {
+  id: string;
+  proyectoId: string;
+  monto: number;
+  cuentaId: string;
+  movimientoId: string;
+  nota: string;
+  usuarioId: string;
+  creadoEn: string;
+}
+
+/** Totales calculados de un proyecto (importe final, pagado y saldo por
+ *  cobrar), para no tener que recalcular esto en el cliente cada vez. */
+export interface ResumenProyecto {
+  proyectoId: string;
+  importe: number;
+  pagado: number;
+  saldo: number;
 }

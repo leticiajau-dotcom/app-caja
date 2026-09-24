@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerClientes } from "@/lib/permisos";
-import { agregarProyecto } from "@/lib/repo";
+import { agregarPago } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
-const AgregarProyectoSchema = z.object({
-  nombre: z.string().min(1),
-  descripcion: z.string().optional(),
-  moneda: z.string().min(1).default("ARS"),
-  precio: z.number().gt(0, "El precio tiene que ser mayor a 0."),
+const PagoSchema = z.object({
+  monto: z.number().gt(0, "El monto tiene que ser mayor a 0."),
+  cuentaId: z.string().min(1),
+  nota: z.string().optional(),
 });
 
-// Admin y socio pueden agregarle un proyecto nuevo a un cliente existente.
+// Admin y socio pueden registrar un pago del cliente contra un proyecto:
+// esto crea además un ingreso real en la cuenta elegida (ver agregarPago).
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
@@ -24,9 +24,12 @@ export async function POST(
       throw new ApiError("No tenés acceso a Clientes.", 403);
     }
     const body = await req.json();
-    const datos = AgregarProyectoSchema.parse(body);
-    const proyecto = await agregarProyecto(params.id, datos);
-    return NextResponse.json({ proyecto });
+    const datos = PagoSchema.parse(body);
+    const { pago, movimiento } = await agregarPago(params.id, {
+      ...datos,
+      usuarioId: sesion.usuarioId,
+    });
+    return NextResponse.json({ pago, movimiento });
   } catch (err) {
     return manejarError(err);
   }
