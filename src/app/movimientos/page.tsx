@@ -179,6 +179,36 @@ export default function MovimientosPage() {
     return m;
   }, [cuentas]);
 
+  /** Saldo total (sumando todas las cuentas activas de esa moneda) que queda
+   *  justo después de cada movimiento — para poder ver, al lado de cada
+   *  registro, cómo se modificó el saldo total con respecto al anterior.
+   *  Se calcula recorriendo los movimientos en orden cronológico (los más
+   *  viejos primero), aunque la lista se muestre con los más nuevos
+   *  arriba. Una transferencia no cambia el total de su moneda (solo
+   *  mueve fondos entre cuentas), así que no se tiene en cuenta acá. */
+  const saldoTotalTrasMovimiento = useMemo(() => {
+    const saldoPorMoneda = new Map<string, number>();
+    for (const c of cuentas) {
+      saldoPorMoneda.set(c.moneda, (saldoPorMoneda.get(c.moneda) ?? 0) + c.saldoInicial);
+    }
+    const cronologico = [...movimientos].sort((a, b) =>
+      a.creadoEn < b.creadoEn ? -1 : 1
+    );
+    const resultado = new Map<string, number>();
+    for (const m of cronologico) {
+      const moneda = cuentasPorId.get(m.cuentaId)?.moneda ?? "ARS";
+      if (!m.anulado && !m.esAperturaSaldo) {
+        if (m.tipo === "ingreso") {
+          saldoPorMoneda.set(moneda, (saldoPorMoneda.get(moneda) ?? 0) + m.monto);
+        } else if (m.tipo === "egreso" || m.tipo === "retiro") {
+          saldoPorMoneda.set(moneda, (saldoPorMoneda.get(moneda) ?? 0) - m.monto);
+        }
+      }
+      resultado.set(m.id, saldoPorMoneda.get(moneda) ?? 0);
+    }
+    return resultado;
+  }, [cuentas, movimientos, cuentasPorId]);
+
   const usuariosPorId = useMemo(() => {
     const m = new Map<string, string>();
     usuarios.forEach((u) => m.set(u.id, u.nombre));
@@ -532,6 +562,18 @@ export default function MovimientosPage() {
                     <td className="py-2 pr-4 text-right font-medium whitespace-nowrap">
                       {signo}
                       {formatMoney(m.monto, cuenta?.moneda ?? "ARS")}
+                      {(() => {
+                        const saldo = saldoTotalTrasMovimiento.get(m.id) ?? 0;
+                        return (
+                          <div
+                            className={`text-xs font-medium ${
+                              saldo < 0 ? "text-red-600" : "text-green-700"
+                            }`}
+                          >
+                            {formatMoney(saldo, cuenta?.moneda ?? "ARS")}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-2 pr-4">
                       {puedeRectificar(m) && (
