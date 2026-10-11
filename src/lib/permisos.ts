@@ -42,3 +42,9 @@ export function soloPuedeRegistrarEgresos(rol: Rol): boolean {
 export function puedeRegistrarRetiros(rol: Rol): boolean {
   return rol === "admin" || rol === "socio";
 }
+
+/** Presupuestos y lista de precios: admin y socio (Leticia, 11/10/2026). El
+ *  empleado no los ve. */
+export function puedeVerPresupuestos(rol: Rol): boolean {
+  return rol === "admin" || rol === "socio";
+}

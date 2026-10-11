@@ -72,6 +72,8 @@ export const TABS = {
   PROYECTOS: "Proyectos",
   MODIFICACIONES: "Modificaciones",
   PAGOS: "Pagos",
+  PRECIOS: "Precios",
+  PRESUPUESTOS: "Presupuestos",
 } as const;
 
 export const HEADERS = {
@@ -143,6 +145,26 @@ export const HEADERS = {
     "nota",
     "usuarioId",
     "creadoEn",
+  ],
+  // Lista de precios para presupuestar (placas, tapacantos y herrajes, con el
+  // mismo nombre con que salen de LEBRON). Ver src/lib/presupuesto.ts.
+  [TABS.PRECIOS]: ["id", "tipo", "nombre", "precio", "actualizadoEn", "usuarioId"],
+  // "datos" es un JSON: el archivo de LEBRON, los precios usados y los extras.
+  [TABS.PRESUPUESTOS]: [
+    "id",
+    "clienteId",
+    "nombre",
+    "estado",
+    "moneda",
+    "coefPlacas",
+    "coefHerrajes",
+    "porModulo",
+    "datos",
+    "total",
+    "proyectoId",
+    "usuarioId",
+    "creadoEn",
+    "actualizadoEn",
   ],
 } as const;
 
@@ -356,6 +378,61 @@ export async function agregarFila(tab: string, valores: (string | number)[]) {
       requestBody: { values: [valores] },
     });
   }
+}
+
+/** Agrega varias filas al final de la pestaña en un solo pedido a Google (la
+ *  API limita los pedidos por minuto: guardar una lista de precios de a una
+ *  fila podía pasarse). */
+export async function agregarFilas(tab: string, filas: (string | number)[][]) {
+  if (filas.length === 0) return;
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const pedido = {
+    spreadsheetId,
+    range: `${tab}!A1`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: filas },
+  };
+  try {
+    await sheets.spreadsheets.values.append(pedido);
+  } catch {
+    await asegurarPestaña(tab);
+    await sheets.spreadsheets.values.append(pedido);
+  }
+}
+
+/** Sobrescribe varias filas existentes (por id, en la primera columna) con un
+ *  solo pedido de lectura y uno de escritura. */
+export async function actualizarFilasPorId(
+  tab: string,
+  filas: { id: string; valores: (string | number)[] }[]
+) {
+  if (filas.length === 0) return;
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!A2:A`,
+  });
+  const ids = (res.data.values ?? []).map((r) => r[0]);
+  const headers = headersDeTab(tab);
+  const lastCol = String.fromCharCode("A".charCodeAt(0) + headers.length - 1);
+  const data = filas.map((f) => {
+    const idx = ids.indexOf(f.id);
+    if (idx === -1) {
+      throw new Error(`No se encontró la fila con id ${f.id} en ${tab}`);
+    }
+    const rowNumber = idx + 2;
+    return {
+      range: `${tab}!A${rowNumber}:${lastCol}${rowNumber}`,
+      values: [f.valores],
+    };
+  });
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: "RAW", data },
+  });
 }
 
 /** Sobrescribe una fila existente (por id, en la primera columna) con nuevos valores. */

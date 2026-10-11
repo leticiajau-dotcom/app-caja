@@ -1,5 +1,7 @@
 // Tipos de dominio para la app de control de caja.
 
+import type { DatosPresupuesto, TipoPrecio } from "./presupuesto";
+
 /** admin: gestiona cuentas/usuarios y opera como cualquier responsable.
  *  socio: mismos permisos que tenía "empleado" antes de este cambio —
  *  opera las cuentas de las que es responsable, ve todos los movimientos
@@ -177,4 +179,55 @@ export interface ResumenProyecto {
   importe: number;
   pagado: number;
   saldo: number;
+}
+
+// ---------------------------------------------------------------------------
+// Presupuestos (a partir del archivo que exporta LEBRON, ver lib/presupuesto.ts)
+// ---------------------------------------------------------------------------
+
+/** Un precio de la lista: placa entera, metro de tapacanto o unidad de
+ *  herraje, con el mismo nombre con que sale de LEBRON. */
+export interface Precio {
+  id: string;
+  tipo: TipoPrecio;
+  nombre: string;
+  precio: number;
+  actualizadoEn: string;
+  usuarioId: string;
+}
+
+/** borrador: se está armando. aceptado: el cliente lo aceptó y ya es un
+ *  Proyecto (proyectoId). descartado: no se usa más (no se borra nada). */
+export type EstadoPresupuesto = "borrador" | "aceptado" | "descartado";
+
+export interface Presupuesto {
+  id: string;
+  clienteId: string;
+  nombre: string;
+  estado: EstadoPresupuesto;
+  moneda: string;
+  /** Coeficiente de placas y tapacantos, y el de herrajes. */
+  coefPlacas: number;
+  coefHerrajes: number;
+  /** Si la hoja del cliente muestra el precio de cada módulo. */
+  porModulo: boolean;
+  datos: DatosPresupuesto;
+  /** Total calculado (se guarda para la lista; la cuenta es calcularPresupuesto). */
+  total: number;
+  proyectoId: string | null;
+  usuarioId: string;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/** Valores de entrada de un presupuesto nuevo (Configuración). */
+export interface DefaultsPresupuesto {
+  coefPlacas: number;
+  coefHerrajes: number;
+  /** Días de validez que se imprimen en la hoja del cliente. */
+  validezDias: number;
+  /** Nombre que encabeza la hoja del cliente (ej: "Lebron Amoblamientos"). */
+  nombreComercial: string;
+  /** Texto al pie de la hoja del cliente: forma de pago, contacto, etc. */
+  notaPie: string;
 }

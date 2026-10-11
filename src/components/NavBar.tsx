@@ -6,7 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import type { Configuracion, SesionInterna } from "@/lib/types";
 import ConfiguracionModal from "./ConfiguracionModal";
 import MobileBottomNav from "./MobileBottomNav";
-import { puedeVerClientes, puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import {
+  puedeVerClientes,
+  puedeVerCuentas,
+  puedeVerPresupuestos,
+  puedeVerUsuarios,
+} from "@/lib/permisos";
 import type { Rol } from "@/lib/types";
 
 const LINKS: { href: string; label: string; visible: (rol: Rol) => boolean }[] = [
@@ -14,6 +19,7 @@ const LINKS: { href: string; label: string; visible: (rol: Rol) => boolean }[] =
   { href: "/movimientos", label: "Movimientos", visible: () => true },
   { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas },
   { href: "/clientes", label: "Clientes", visible: puedeVerClientes },
+  { href: "/presupuestos", label: "Presupuestos", visible: puedeVerPresupuestos },
   { href: "/usuarios", label: "Usuarios", visible: puedeVerUsuarios },
 ];
 
@@ -112,7 +118,7 @@ export default function NavBar() {
 
   return (
     <>
-      <header className="border-b border-madera-100 bg-white hidden md:block">
+      <header className="border-b border-madera-100 bg-white hidden md:block print:hidden">
         <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-6">
             {marca}
@@ -149,7 +155,7 @@ export default function NavBar() {
        *  botón de salir a la derecha. La navegación entre pantallas se
        *  hace desde el menú inferior (MobileBottomNav), no desde acá. */}
       <header
-        className="md:hidden sticky top-0 z-40 font-manrope"
+        className="md:hidden sticky top-0 z-40 font-manrope print:hidden"
         style={{ backgroundColor: "#f4efe4" }}
       >
         <div className="px-5 pt-[18px] pb-3.5 flex items-center justify-between gap-3">

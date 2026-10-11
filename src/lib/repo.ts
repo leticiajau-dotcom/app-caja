@@ -3,7 +3,9 @@ import { randomUUID } from "crypto";
 import {
   TABS,
   agregarFila,
+  agregarFilas,
   actualizarFilaPorId,
+  actualizarFilasPorId,
   leerFilas,
   leerConfigValor,
   escribirConfigValor,
@@ -16,9 +18,13 @@ import type {
   Cliente,
   Configuracion,
   Cuenta,
+  DefaultsPresupuesto,
+  EstadoPresupuesto,
   Modificacion,
   Movimiento,
   Pago,
+  Precio,
+  Presupuesto,
   Proyecto,
   Resumen,
   ResumenProyecto,
@@ -28,6 +34,16 @@ import type {
   TipoMovimiento,
   Usuario,
 } from "./types";
+import {
+  EXTRAS_INICIALES,
+  calcularPresupuesto,
+  clavePrecio,
+  preciosParaArchivo,
+  type ArchivoLebron,
+  type DatosPresupuesto,
+  type Extra,
+  type TipoPrecio,
+} from "./presupuesto";
 
 const toBool = (v: string) => v === "true" || v === "TRUE" || v === "1";
 const toNum = (v: string) => (v === "" ? 0 : Number(v));
@@ -1041,4 +1057,322 @@ export async function agregarPagoHistorico(
   await agregarFila(TABS.PAGOS, filaPago(pago));
 
   return pago;
+}
+
+// ---------------------------------------------------------------------------
+// Presupuestos (a partir del archivo que exporta LEBRON) y lista de precios
+// ---------------------------------------------------------------------------
+// La cuenta vive en lib/presupuesto.ts (sin Google Sheets, para poder
+// probarla sola); acá solo se lee y se guarda. Un presupuesto guarda los
+// precios unitarios que usó: si después cambia la lista, un presupuesto ya
+// hecho no cambia solo (se puede volver a tomar la lista desde la pantalla).
+
+const TIPOS_PRECIO: TipoPrecio[] = ["placa", "canto", "herraje"];
+
+function rowToPrecio(r: Record<string, string>): Precio {
+  return {
+    id: r.id,
+    tipo: (TIPOS_PRECIO.includes(r.tipo as TipoPrecio) ? r.tipo : "herraje") as TipoPrecio,
+    nombre: r.nombre,
+    precio: toNum(r.precio),
+    actualizadoEn: r.actualizadoEn,
+    usuarioId: r.usuarioId,
+  };
+}
+
+function filaPrecio(p: Precio): (string | number)[] {
+  return [p.id, p.tipo, p.nombre, p.precio, p.actualizadoEn, p.usuarioId];
+}
+
+export async function listarPrecios(): Promise<Precio[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.PRECIOS);
+  return rows.map(rowToPrecio);
+}
+
+/** Carga o cambia precios de la lista (por tipo + nombre, sin distinguir
+ *  mayúsculas). Un precio en 0 no se guarda: es "todavía sin precio". */
+export async function guardarPrecios(
+  cambios: { tipo: TipoPrecio; nombre: string; precio: number }[],
+  usuarioId: string
+): Promise<Precio[]> {
+  const lista = await listarPrecios();
+  const porClave = new Map(lista.map((p) => [clavePrecio(p.tipo, p.nombre), p]));
+  const ahora = new Date().toISOString();
+  const nuevas = new Map<string, Precio>();
+  const actualizadas = new Map<string, Precio>();
+  for (const c of cambios) {
+    const nombre = c.nombre.trim();
+    if (!nombre || !(c.precio > 0)) continue;
+    const clave = clavePrecio(c.tipo, nombre);
+    const existente = porClave.get(clave);
+    if (existente && existente.precio === c.precio) continue;
+    if (existente) {
+      const act: Precio = { ...existente, precio: c.precio, actualizadoEn: ahora, usuarioId };
+      porClave.set(clave, act);
+      if (nuevas.has(clave)) nuevas.set(clave, act);
+      else actualizadas.set(clave, act);
+    } else {
+      const nuevo: Precio = { id: randomUUID(), tipo: c.tipo, nombre, precio: c.precio, actualizadoEn: ahora, usuarioId };
+      porClave.set(clave, nuevo);
+      nuevas.set(clave, nuevo);
+    }
+  }
+  await actualizarFilasPorId(
+    TABS.PRECIOS,
+    [...actualizadas.values()].map((p) => ({ id: p.id, valores: filaPrecio(p) }))
+  );
+  await agregarFilas(TABS.PRECIOS, [...nuevas.values()].map(filaPrecio));
+  return [...porClave.values()];
+}
+
+// Una celda de Google Sheets admite hasta 50.000 caracteres.
+const LIMITE_DATOS_PRESUPUESTO = 45_000;
+
+function serializarDatosPresupuesto(datos: DatosPresupuesto): string {
+  const texto = JSON.stringify(datos);
+  if (texto.length > LIMITE_DATOS_PRESUPUESTO) {
+    throw new Error(
+      "El diseño tiene demasiados módulos distintos para guardarlo en la planilla. Probá exportar de LEBRON por partes."
+    );
+  }
+  return texto;
+}
+
+function rowToPresupuesto(r: Record<string, string>): Presupuesto {
+  let datos: DatosPresupuesto;
+  try {
+    datos = JSON.parse(r.datos);
+  } catch {
+    throw new Error(`El presupuesto ${r.id} tiene los datos dañados en la planilla.`);
+  }
+  return {
+    id: r.id,
+    clienteId: r.clienteId,
+    nombre: r.nombre,
+    estado: (["borrador", "aceptado", "descartado"].includes(r.estado) ? r.estado : "borrador") as EstadoPresupuesto,
+    moneda: r.moneda || "ARS",
+    coefPlacas: toNum(r.coefPlacas) || 1,
+    coefHerrajes: toNum(r.coefHerrajes) || 1,
+    porModulo: toBool(r.porModulo),
+    datos,
+    total: toNum(r.total),
+    proyectoId: r.proyectoId || null,
+    usuarioId: r.usuarioId,
+    creadoEn: r.creadoEn,
+    actualizadoEn: r.actualizadoEn,
+  };
+}
+
+function filaPresupuesto(p: Presupuesto): (string | number)[] {
+  return [
+    p.id,
+    p.clienteId,
+    p.nombre,
+    p.estado,
+    p.moneda,
+    p.coefPlacas,
+    p.coefHerrajes,
+    p.porModulo ? "true" : "false",
+    serializarDatosPresupuesto(p.datos),
+    p.total,
+    p.proyectoId ?? "",
+    p.usuarioId,
+    p.creadoEn,
+    p.actualizadoEn,
+  ];
+}
+
+export async function listarPresupuestos(): Promise<Presupuesto[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.PRESUPUESTOS);
+  return rows.map(rowToPresupuesto);
+}
+
+export async function obtenerPresupuesto(id: string): Promise<Presupuesto> {
+  const p = (await listarPresupuestos()).find((x) => x.id === id);
+  if (!p) throw new ApiError("Presupuesto no encontrado.", 404);
+  return p;
+}
+
+const CLAVE_COEF_PLACAS = "presupuestoCoefPlacas";
+const CLAVE_COEF_HERRAJES = "presupuestoCoefHerrajes";
+const CLAVE_VALIDEZ_DIAS = "presupuestoValidezDias";
+const CLAVE_NOMBRE_COMERCIAL = "presupuestoNombreComercial";
+const CLAVE_NOTA_PIE = "presupuestoNotaPie";
+
+export async function obtenerDefaultsPresupuesto(): Promise<DefaultsPresupuesto> {
+  const [placas, herrajes, validez, nombreComercial, notaPie] = await Promise.all([
+    leerConfigValor(CLAVE_COEF_PLACAS),
+    leerConfigValor(CLAVE_COEF_HERRAJES),
+    leerConfigValor(CLAVE_VALIDEZ_DIAS),
+    leerConfigValor(CLAVE_NOMBRE_COMERCIAL),
+    leerConfigValor(CLAVE_NOTA_PIE),
+  ]);
+  const coefPlacas = Number(placas) > 0 ? Number(placas) : 1;
+  return {
+    coefPlacas,
+    coefHerrajes: Number(herrajes) > 0 ? Number(herrajes) : coefPlacas,
+    validezDias: Number(validez) > 0 ? Number(validez) : 15,
+    nombreComercial: nombreComercial ?? "",
+    notaPie: notaPie ?? "",
+  };
+}
+
+export async function guardarDefaultsPresupuesto(d: DefaultsPresupuesto) {
+  if (!(d.coefPlacas > 0) || !(d.coefHerrajes > 0)) {
+    throw new Error("Los coeficientes tienen que ser mayores a 0.");
+  }
+  if (!(d.validezDias > 0)) throw new Error("La validez tiene que ser de al menos 1 día.");
+  await escribirConfigValor(CLAVE_COEF_PLACAS, String(d.coefPlacas));
+  await escribirConfigValor(CLAVE_COEF_HERRAJES, String(d.coefHerrajes));
+  await escribirConfigValor(CLAVE_VALIDEZ_DIAS, String(Math.round(d.validezDias)));
+  await escribirConfigValor(CLAVE_NOMBRE_COMERCIAL, d.nombreComercial.trim());
+  await escribirConfigValor(CLAVE_NOTA_PIE, d.notaPie.trim());
+  return obtenerDefaultsPresupuesto();
+}
+
+/** El cliente con ese nombre (sin distinguir mayúsculas), o uno nuevo sin
+ *  proyectos: un presupuesto todavía no es un proyecto. */
+async function clientePorNombre(nombre: string): Promise<Cliente> {
+  const limpio = nombre.trim();
+  if (!limpio) throw new Error("Ingresá el nombre del cliente.");
+  const existente = (await listarClientes()).find(
+    (c) => c.nombre.trim().toLowerCase() === limpio.toLowerCase()
+  );
+  if (existente) return existente;
+  const cliente: Cliente = { id: randomUUID(), nombre: limpio, creadoEn: new Date().toISOString() };
+  await agregarFila(TABS.CLIENTES, [cliente.id, cliente.nombre, cliente.creadoEn]);
+  return cliente;
+}
+
+export async function crearPresupuesto(datos: {
+  clienteId?: string;
+  clienteNuevo?: string;
+  nombre: string;
+  moneda: string;
+  archivo: ArchivoLebron;
+  usuarioId: string;
+}): Promise<Presupuesto> {
+  const nombre = datos.nombre.trim();
+  if (!nombre) throw new Error("Ingresá un nombre para el presupuesto.");
+  let clienteId = datos.clienteId;
+  if (clienteId) {
+    if (!(await listarClientes()).some((c) => c.id === clienteId)) {
+      throw new Error("Cliente no encontrado.");
+    }
+  } else {
+    clienteId = (await clientePorNombre(datos.clienteNuevo ?? "")).id;
+  }
+
+  const [lista, defaults] = await Promise.all([listarPrecios(), obtenerDefaultsPresupuesto()]);
+  const contenido: DatosPresupuesto = {
+    archivo: datos.archivo,
+    precios: preciosParaArchivo(datos.archivo, lista),
+    extras: EXTRAS_INICIALES.map((e) => ({ ...e })),
+  };
+  const ahora = new Date().toISOString();
+  const presupuesto: Presupuesto = {
+    id: randomUUID(),
+    clienteId,
+    nombre,
+    estado: "borrador",
+    moneda: datos.moneda.trim().toUpperCase() || "ARS",
+    coefPlacas: defaults.coefPlacas,
+    coefHerrajes: defaults.coefHerrajes,
+    porModulo: false,
+    datos: contenido,
+    total: calcularPresupuesto(contenido, defaults.coefPlacas, defaults.coefHerrajes).total,
+    proyectoId: null,
+    usuarioId: datos.usuarioId,
+    creadoEn: ahora,
+    actualizadoEn: ahora,
+  };
+  await agregarFila(TABS.PRESUPUESTOS, filaPresupuesto(presupuesto));
+  return presupuesto;
+}
+
+export async function actualizarPresupuesto(
+  id: string,
+  cambios: {
+    nombre?: string;
+    coefPlacas?: number;
+    coefHerrajes?: number;
+    porModulo?: boolean;
+    /** Precios cambiados en este presupuesto: también quedan en la lista. */
+    precios?: { tipo: TipoPrecio; nombre: string; precio: number }[];
+    /** Tomar otra vez todos los precios de la lista actual. */
+    tomarPreciosDeLaLista?: boolean;
+    extras?: Extra[];
+    estado?: "borrador" | "descartado";
+  },
+  usuarioId: string
+): Promise<Presupuesto> {
+  const p = await obtenerPresupuesto(id);
+  if (p.estado === "aceptado") {
+    throw new Error(
+      "Este presupuesto ya es un proyecto. Los cambios se cargan como Modificación, en Clientes."
+    );
+  }
+  if (cambios.nombre !== undefined) {
+    if (!cambios.nombre.trim()) throw new Error("El presupuesto necesita un nombre.");
+    p.nombre = cambios.nombre.trim();
+  }
+  if (cambios.coefPlacas !== undefined) {
+    if (!(cambios.coefPlacas > 0)) throw new Error("El coeficiente tiene que ser mayor a 0.");
+    p.coefPlacas = cambios.coefPlacas;
+  }
+  if (cambios.coefHerrajes !== undefined) {
+    if (!(cambios.coefHerrajes > 0)) throw new Error("El coeficiente tiene que ser mayor a 0.");
+    p.coefHerrajes = cambios.coefHerrajes;
+  }
+  if (cambios.porModulo !== undefined) p.porModulo = cambios.porModulo;
+  if (cambios.extras !== undefined) {
+    p.datos.extras = cambios.extras
+      .map((e) => ({ concepto: e.concepto.trim(), monto: Math.max(0, e.monto || 0), separado: Boolean(e.separado) }))
+      .filter((e) => e.concepto);
+  }
+  if (cambios.tomarPreciosDeLaLista) {
+    p.datos.precios = preciosParaArchivo(p.datos.archivo, await listarPrecios());
+  }
+  if (cambios.precios && cambios.precios.length > 0) {
+    for (const c of cambios.precios) {
+      if (!(c.precio >= 0)) throw new Error(`El precio de ${c.nombre} no es válido.`);
+      p.datos.precios[clavePrecio(c.tipo, c.nombre)] = c.precio;
+    }
+    await guardarPrecios(cambios.precios, usuarioId);
+  }
+  if (cambios.estado !== undefined) p.estado = cambios.estado;
+
+  p.total = calcularPresupuesto(p.datos, p.coefPlacas, p.coefHerrajes).total;
+  p.actualizadoEn = new Date().toISOString();
+  await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
+  return p;
+}
+
+/** El cliente aceptó: el presupuesto pasa a ser un Proyecto de ese cliente,
+ *  con el total como precio (de ahí en adelante, pagos y modificaciones
+ *  como siempre, en Clientes). */
+export async function aceptarPresupuesto(
+  id: string
+): Promise<{ presupuesto: Presupuesto; proyecto: Proyecto }> {
+  const p = await obtenerPresupuesto(id);
+  if (p.estado !== "borrador") {
+    throw new Error(
+      p.estado === "aceptado" ? "Este presupuesto ya fue aceptado." : "Este presupuesto está descartado."
+    );
+  }
+  const total = calcularPresupuesto(p.datos, p.coefPlacas, p.coefHerrajes).total;
+  if (!(total > 0)) throw new Error("El total tiene que ser mayor a 0: cargá los precios.");
+  const fecha = new Date(p.creadoEn).toLocaleDateString("es-AR");
+  const proyecto = await agregarProyecto(p.clienteId, {
+    nombre: p.nombre,
+    descripcion: `Presupuesto del ${fecha} (diseño de LEBRON)`,
+    moneda: p.moneda,
+    precio: total,
+  });
+  p.estado = "aceptado";
+  p.proyectoId = proyecto.id;
+  p.total = total;
+  p.actualizadoEn = new Date().toISOString();
+  await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
+  return { presupuesto: p, proyecto };
 }

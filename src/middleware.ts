@@ -38,5 +38,7 @@ export const config = {
     "/usuarios/:path*",
     "/retiros/:path*",
     "/clientes/:path*",
+    "/presupuestos/:path*",
+    "/precios/:path*",
   ],
 };

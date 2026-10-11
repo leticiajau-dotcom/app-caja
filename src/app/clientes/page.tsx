@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MONEDAS_SUGERIDAS, formatFecha, formatMoney } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
@@ -399,11 +400,17 @@ export default function ClientesPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-madera-800">Clientes</h1>
-        <p className="text-madera-600">
-          Clientes y sus proyectos: importe, modificaciones y pagos.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-madera-800">Clientes</h1>
+          <p className="text-madera-600">
+            Clientes y sus proyectos: importe, modificaciones y pagos.
+          </p>
+        </div>
+        {/* En el celular Presupuestos no tiene pestaña propia abajo: se llega desde acá. */}
+        <Link href="/presupuestos" className="btn-secondary">
+          Presupuestos
+        </Link>
       </div>
 
       <div className="card">

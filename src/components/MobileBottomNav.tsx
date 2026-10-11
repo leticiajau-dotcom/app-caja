@@ -43,7 +43,7 @@ export default function MobileBottomNav({
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex bg-white px-2.5 pt-2 pb-3.5 font-manrope"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex bg-white px-2.5 pt-2 pb-3.5 font-manrope print:hidden"
       style={{ boxShadow: "0 -2px 12px rgba(30,25,15,0.06)" }}
     >
       {tabs.map((t) => {
