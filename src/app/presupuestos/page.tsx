@@ -33,6 +33,7 @@ export default function PresupuestosPage() {
   const [clienteNuevo, setClienteNuevo] = useState("");
   const [nombre, setNombre] = useState("");
   const [creando, setCreando] = useState(false);
+  const [mostrarSubir, setMostrarSubir] = useState(false);
   const [error, setError] = useState("");
 
   async function cargar() {
@@ -134,86 +135,13 @@ export default function PresupuestosPage() {
         <div>
           <h1 className="text-2xl font-bold text-madera-800">Presupuestos</h1>
           <p className="text-madera-600">
-            A partir de un diseño de LEBRON: costo de materiales × coeficiente, más mano de obra, colocación y
-            flete.
+            Llegan desde LEBRON con el botón &quot;Presupuesto&quot;. Costo de materiales × coeficiente, más mano de
+            obra, colocación y flete.
           </p>
         </div>
         <Link href="/precios" className="btn-secondary">
           Lista de precios
         </Link>
-      </div>
-
-      <div className="card">
-        <h2 className="font-semibold text-lg mb-1">Nuevo presupuesto</h2>
-        <p className="text-xs text-madera-500 mb-4">
-          En LEBRON: Reporte {">"} &quot;Presupuesto (archivo para la app de caja)&quot;. Después elegí acá ese
-          archivo.
-        </p>
-        <div className="mb-4">
-          <label className="btn-secondary cursor-pointer">
-            {archivo ? "Elegir otro archivo" : "Elegir el archivo de LEBRON"}
-            <input type="file" accept=".json,application/json" className="hidden" onChange={elegirArchivo} />
-          </label>
-          {nombreArchivo && <span className="ml-3 text-sm text-madera-600">{nombreArchivo}</span>}
-          {errorArchivo && <p className="text-sm text-red-600 mt-2">{errorArchivo}</p>}
-        </div>
-
-        {archivo && (
-          <form onSubmit={crear} className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-lg bg-madera-50 p-3 text-sm text-madera-700">
-              {muebles} {muebles === 1 ? "mueble" : "muebles"} · {archivo.placas.length}{" "}
-              {archivo.placas.length === 1 ? "material de placa" : "materiales de placa"} ·{" "}
-              {archivo.herrajes.length} herrajes distintos
-              {archivo.generado && <span className="text-madera-400"> · exportado el {archivo.generado}</span>}
-              {archivo.avisos.length > 0 && (
-                <ul className="mt-2 space-y-1 text-amber-800">
-                  {archivo.avisos.map((a, i) => (
-                    <li key={i} className="whitespace-pre-line">
-                      ⚠ {a}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <label className="label">Cliente</label>
-              <select
-                className="input"
-                value={clienteSeleccion}
-                onChange={(e) => setClienteSeleccion(e.target.value)}
-              >
-                <option value={CLIENTE_NUEVO}>Cliente nuevo...</option>
-                {clientesOrdenados.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-              {clienteSeleccion === CLIENTE_NUEVO && (
-                <input
-                  className="input mt-2"
-                  placeholder="Nombre del cliente"
-                  value={clienteNuevo}
-                  onChange={(e) => setClienteNuevo(e.target.value)}
-                  required
-                />
-              )}
-            </div>
-            <div>
-              <label className="label">Nombre del presupuesto</label>
-              <input className="input" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
-              <p className="text-xs text-madera-400 mt-1">
-                Si el cliente lo acepta, es el nombre del proyecto (ej: &quot;Cocina&quot;).
-              </p>
-            </div>
-            <div className="sm:col-span-2">
-              {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
-              <button className="btn-primary" disabled={creando}>
-                {creando ? "Creando..." : "Crear presupuesto"}
-              </button>
-            </div>
-          </form>
-        )}
       </div>
 
       <div className="card">
@@ -260,6 +188,102 @@ export default function PresupuestosPage() {
                 </Link>
               );
             })}
+          </div>
+        )}
+      </div>
+      {/* Plan B (12/10/2026): los presupuestos llegan desde LEBRON con el botón
+          "Presupuesto". Subir el archivo a mano queda para cuando no se pudo mandar
+          (sin internet, por ejemplo), y solo en la PC: en el celular no hay archivo. */}
+      <div className="hidden md:block">
+        {!mostrarSubir ? (
+          <button
+            type="button"
+            className="text-sm text-madera-500 hover:text-madera-700 underline"
+            onClick={() => setMostrarSubir(true)}
+          >
+            ¿No se pudo mandar desde LEBRON? Subí el archivo
+          </button>
+        ) : (
+          <div className="card">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <h2 className="font-semibold text-lg">Subir el archivo de LEBRON</h2>
+              <button
+                type="button"
+                className="text-sm text-madera-400 hover:text-madera-700"
+                onClick={() => setMostrarSubir(false)}
+              >
+                Cerrar
+              </button>
+            </div>
+            <p className="text-xs text-madera-500 mb-4">
+              LEBRON deja una copia en Documentos {">"} Lebron {">"} reportes (o sacala con Reporte {">"}
+              &quot;Presupuesto (archivo para la app de caja)&quot;). Elegila acá.
+            </p>
+            <div className="mb-4">
+              <label className="btn-secondary cursor-pointer">
+                {archivo ? "Elegir otro archivo" : "Elegir el archivo de LEBRON"}
+                <input type="file" accept=".json,application/json" className="hidden" onChange={elegirArchivo} />
+              </label>
+              {nombreArchivo && <span className="ml-3 text-sm text-madera-600">{nombreArchivo}</span>}
+              {errorArchivo && <p className="text-sm text-red-600 mt-2">{errorArchivo}</p>}
+            </div>
+
+            {archivo && (
+              <form onSubmit={crear} className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2 rounded-lg bg-madera-50 p-3 text-sm text-madera-700">
+                  {muebles} {muebles === 1 ? "mueble" : "muebles"} · {archivo.placas.length}{" "}
+                  {archivo.placas.length === 1 ? "material de placa" : "materiales de placa"} ·{" "}
+                  {archivo.herrajes.length} herrajes distintos
+                  {archivo.generado && <span className="text-madera-400"> · exportado el {archivo.generado}</span>}
+                  {archivo.avisos.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-amber-800">
+                      {archivo.avisos.map((a, i) => (
+                        <li key={i} className="whitespace-pre-line">
+                          ⚠ {a}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <label className="label">Cliente</label>
+                  <select
+                    className="input"
+                    value={clienteSeleccion}
+                    onChange={(e) => setClienteSeleccion(e.target.value)}
+                  >
+                    <option value={CLIENTE_NUEVO}>Cliente nuevo...</option>
+                    {clientesOrdenados.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {clienteSeleccion === CLIENTE_NUEVO && (
+                    <input
+                      className="input mt-2"
+                      placeholder="Nombre del cliente"
+                      value={clienteNuevo}
+                      onChange={(e) => setClienteNuevo(e.target.value)}
+                      required
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="label">Nombre del presupuesto</label>
+                  <input className="input" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+                  <p className="text-xs text-madera-400 mt-1">
+                    Si el cliente lo acepta, es el nombre del proyecto (ej: &quot;Cocina&quot;).
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+                  <button className="btn-primary" disabled={creando}>
+                    {creando ? "Creando..." : "Crear presupuesto"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
       </div>
