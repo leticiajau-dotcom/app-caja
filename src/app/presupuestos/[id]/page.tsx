@@ -50,6 +50,7 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
   const [coefHerrajesTexto, setCoefHerrajesTexto] = useState("1");
   const [dosCoef, setDosCoef] = useState(false);
   const [porModulo, setPorModulo] = useState(false);
+  const [descuentoTexto, setDescuentoTexto] = useState("0");
   const [precios, setPrecios] = useState<Record<string, number>>({});
   const [preciosCambiados, setPreciosCambiados] = useState<
     Record<string, { tipo: TipoPrecio; nombre: string; precio: number }>
@@ -68,6 +69,7 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
     setCoefHerrajesTexto(textoCoef(p.coefHerrajes));
     setDosCoef(p.coefPlacas !== p.coefHerrajes);
     setPorModulo(p.porModulo);
+    setDescuentoTexto(textoCoef(p.datos.descuento ?? 0));
     setPrecios({ ...p.datos.precios });
     setPreciosCambiados({});
     setExtras(p.datos.extras.map((e) => ({ ...e })));
@@ -113,15 +115,18 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
   const coefPlacas = leerDecimal(coefPlacasTexto);
   const coefHerrajes = dosCoef ? leerDecimal(coefHerrajesTexto) : coefPlacas;
   const coefValidos = coefPlacas > 0 && coefHerrajes > 0;
+  // Vacío cuenta como 0, así se puede borrar el número para escribir otro.
+  const descuento = descuentoTexto.trim() === "" ? 0 : leerDecimal(descuentoTexto);
+  const descuentoValido = descuento >= 0 && descuento < 100;
 
   const resultado = useMemo(() => {
     if (!presupuesto) return null;
     return calcularPresupuesto(
-      { archivo: presupuesto.datos.archivo, precios, extras },
+      { archivo: presupuesto.datos.archivo, precios, extras, descuento: descuentoValido ? descuento : 0 },
       coefValidos ? coefPlacas : 1,
       coefValidos ? coefHerrajes : 1
     );
-  }, [presupuesto, precios, extras, coefPlacas, coefHerrajes, coefValidos]);
+  }, [presupuesto, precios, extras, coefPlacas, coefHerrajes, coefValidos, descuento, descuentoValido]);
 
   const editable = presupuesto?.estado === "borrador";
 
@@ -164,11 +169,16 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
       setError("Los coeficientes tienen que ser números mayores a 0 (por ejemplo 2,5).");
       return false;
     }
+    if (!descuentoValido) {
+      setError("El descuento del proveedor tiene que ser un número entre 0 y 99.");
+      return false;
+    }
     const ok = await enviar({
       nombre,
       coefPlacas,
       coefHerrajes,
       porModulo,
+      descuento,
       precios: Object.values(preciosCambiados),
       extras,
     });
@@ -318,7 +328,7 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
       )}
 
       <div className="card">
-        <h2 className="font-semibold text-lg mb-3">Coeficiente</h2>
+        <h2 className="font-semibold text-lg mb-3">Coeficiente y descuento</h2>
         <div className="grid gap-3 sm:grid-cols-3 items-end">
           <div>
             <label className="label">{dosCoef ? "Placas y tapacantos" : "Todos los materiales"}</label>
@@ -364,6 +374,28 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
         </div>
         {!coefValidos && (
           <p className="text-sm text-red-600 mt-2">El coeficiente tiene que ser un número mayor a 0 (ej: 2,5).</p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-3 items-end mt-4">
+          <div>
+            <label className="label">Descuento del proveedor (%)</label>
+            <input
+              className="input"
+              inputMode="decimal"
+              disabled={!editable}
+              value={descuentoTexto}
+              onChange={(e) => {
+                setDescuentoTexto(e.target.value);
+                setHayCambios(true);
+              }}
+            />
+          </div>
+          <p className="text-xs text-madera-500 sm:col-span-2 pb-2">
+            Los precios de la lista son de lista, con IVA. Lo que te descuenta el proveedor se resta del costo de
+            placas, tapacantos y herrajes, antes del coeficiente.
+          </p>
+        </div>
+        {!descuentoValido && (
+          <p className="text-sm text-red-600 mt-2">El descuento tiene que ser un número entre 0 y 99.</p>
         )}
       </div>
 
@@ -429,6 +461,12 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
             );
           })}
         </div>
+        {resultado.descuento > 0 && (
+          <p className="text-right text-sm text-madera-600 mt-3">
+            Descuento del proveedor ({textoCoef(resultado.descuento)}%):{" "}
+            <span className="font-medium">−{formatMoney(resultado.descuentoMonto, moneda)}</span>
+          </p>
+        )}
       </div>
 
       <div className="card">
@@ -532,6 +570,7 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
           <p className="text-xs text-madera-400">
             Costo de materiales sin coeficiente:{" "}
             {formatMoney(resultado.costoPlacasCanto + resultado.costoHerrajes, moneda)}
+            {resultado.descuento > 0 && ` (ya con el ${textoCoef(resultado.descuento)}% de descuento del proveedor)`}
           </p>
         </div>
       </div>

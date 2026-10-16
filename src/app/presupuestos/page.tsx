@@ -216,8 +216,8 @@ export default function PresupuestosPage() {
               </button>
             </div>
             <p className="text-xs text-madera-500 mb-4">
-              LEBRON deja una copia en Documentos {">"} Lebron {">"} reportes (o sacala con Reporte {">"}
-              &quot;Presupuesto (archivo para la app de caja)&quot;). Elegila acá.
+              Cada vez que tocás Presupuesto en LEBRON queda una copia en Documentos {">"} Lebron {">"} reportes.
+              Elegila acá.
             </p>
             <div className="mb-4">
               <label className="btn-secondary cursor-pointer">

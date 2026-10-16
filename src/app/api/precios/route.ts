@@ -15,9 +15,13 @@ const PreciosSchema = z.object({
   precios: z
     .array(
       z.object({
-        tipo: z.enum(["placa", "canto", "herraje"]),
+        tipo: z.enum(["placa", "canto", "herraje", "otro"]),
         nombre: z.string().min(1),
         precio: z.number().min(0),
+        codigo: z.string().max(60).optional(),
+        proveedor: z.string().max(80).optional(),
+        descripcion: z.string().max(200).optional(),
+        contenido: z.number().gt(0).optional(),
       })
     )
     .optional(),
@@ -50,7 +54,8 @@ export async function GET() {
   }
 }
 
-// Admin y socio cargan y cambian precios, y los valores de entrada de un
+// Admin y socio cargan y cambian precios (a mano o importando una lista del
+// proveedor, ver /precios/importar), y los valores de entrada de un
 // presupuesto nuevo (coeficientes y validez).
 export async function POST(req: Request) {
   try {

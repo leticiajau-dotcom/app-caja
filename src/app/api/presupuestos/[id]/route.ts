@@ -29,6 +29,7 @@ const ActualizarSchema = z.object({
   extras: z
     .array(z.object({ concepto: z.string(), monto: z.number().min(0), separado: z.boolean() }))
     .optional(),
+  descuento: z.number().min(0).lt(100).optional(),
   estado: z.enum(["borrador", "descartado"]).optional(),
 });
 

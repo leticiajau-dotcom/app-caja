@@ -190,10 +190,33 @@ export interface ResumenProyecto {
 export interface Precio {
   id: string;
   tipo: TipoPrecio;
+  /** El nombre con que sale de LEBRON (en "otro", la descripción del proveedor). */
   nombre: string;
+  /** Precio de LISTA del proveedor, con IVA, por unidad de LEBRON (placa, metro,
+   *  unidad o par). Si se compra en caja, ya está dividido por `contenido`. */
   precio: number;
   actualizadoEn: string;
   usuarioId: string;
+  /** El artículo en la lista del proveedor (16/10/2026): con el código, una
+   *  lista nueva del proveedor actualiza el precio sola. Vacíos si se cargó a mano. */
+  codigo: string;
+  proveedor: string;
+  descripcion: string;
+  /** Cuántas unidades de LEBRON trae lo que vende el proveedor (caja de 200
+   *  tornillos: 200). 1 si se vende de a una. */
+  contenido: number;
+}
+
+/** Un precio para cargar o cambiar (a mano, desde un presupuesto o importando
+ *  una lista). Lo que no viene, en un precio que ya estaba, queda como estaba. */
+export interface CambioPrecio {
+  tipo: TipoPrecio;
+  nombre: string;
+  precio: number;
+  codigo?: string;
+  proveedor?: string;
+  descripcion?: string;
+  contenido?: number;
 }
 
 /** borrador: se está armando. aceptado: el cliente lo aceptó y ya es un

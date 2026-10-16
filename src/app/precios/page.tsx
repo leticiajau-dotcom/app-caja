@@ -6,13 +6,27 @@ import MoneyInput from "@/components/MoneyInput";
 import { formatMoney } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import { clavePrecio, type TipoPrecio } from "@/lib/presupuesto";
-import type { DefaultsPresupuesto, Precio } from "@/lib/types";
+import type { CambioPrecio, DefaultsPresupuesto, Precio } from "@/lib/types";
 
 const SECCIONES: { tipo: TipoPrecio; titulo: string; unidad: string; ejemplo: string }[] = [
   { tipo: "placa", titulo: "Placas", unidad: "por placa entera", ejemplo: "Ej: Canela EGGER" },
   { tipo: "canto", titulo: "Tapacantos", unidad: "por metro", ejemplo: "Ej: Canela EGGER" },
   { tipo: "herraje", titulo: "Herrajes", unidad: "por unidad", ejemplo: "Ej: Bisagra Comun (Hafele)" },
+  { tipo: "otro", titulo: "Otros (LEBRON no los usa)", unidad: "por unidad", ejemplo: "Ej: Corte (tiempo Gabbiani)" },
 ];
+
+/** "Cód. 280130 · Emporio del Terciado · viene de a 200 · actualizado el 16/10/2026"
+ *  (el código primero: en el celular es lo que se busca). */
+function detalleDePrecio(p: Precio) {
+  const partes = [
+    p.codigo && `cód. ${p.codigo}`,
+    p.proveedor,
+    p.contenido > 1 && `viene de a ${p.contenido.toLocaleString("es-AR")}`,
+    `actualizado el ${new Date(p.actualizadoEn).toLocaleDateString("es-AR")}`,
+  ].filter(Boolean);
+  const texto = partes.join(" · ");
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
 
 /** "2,5" o "2.5" -> 2.5 (NaN si no es un número). */
 function leerDecimal(texto: string) {
@@ -35,6 +49,8 @@ export default function PreciosPage() {
   const [nuevoTipo, setNuevoTipo] = useState<TipoPrecio>("placa");
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoPrecio, setNuevoPrecio] = useState(0);
+  const [nuevoCodigo, setNuevoCodigo] = useState("");
+  const [nuevoProveedor, setNuevoProveedor] = useState("");
 
   // Valores de entrada de un presupuesto nuevo
   const [coefPlacas, setCoefPlacas] = useState("");
@@ -82,7 +98,7 @@ export default function PreciosPage() {
     return m;
   }, [precios]);
 
-  async function guardar(lista: { tipo: TipoPrecio; nombre: string; precio: number }[]) {
+  async function guardar(lista: CambioPrecio[]) {
     setError("");
     setAviso("");
     setGuardando(true);
@@ -123,9 +139,11 @@ export default function PreciosPage() {
       (p) => clavePrecio(p.tipo, p.nombre) === clavePrecio(nuevoTipo, nuevoNombre)
     );
     if (yaEsta && !confirm("Ya hay un precio con ese nombre. ¿Lo reemplazo?")) return;
-    if (await guardar([{ tipo: nuevoTipo, nombre: nuevoNombre, precio: nuevoPrecio }])) {
+    const delProveedor = nuevoCodigo.trim() ? { codigo: nuevoCodigo, proveedor: nuevoProveedor } : {};
+    if (await guardar([{ tipo: nuevoTipo, nombre: nuevoNombre, precio: nuevoPrecio, ...delProveedor }])) {
       setNuevoNombre("");
       setNuevoPrecio(0);
+      setNuevoCodigo("");
     }
   }
 
@@ -182,12 +200,18 @@ export default function PreciosPage() {
         <div>
           <h1 className="text-2xl font-bold text-madera-800">Precios</h1>
           <p className="text-madera-600">
-            Lo que cuesta cada placa, tapacanto y herraje, con el mismo nombre con que sale de LEBRON.
+            Lo que cuesta cada placa, tapacanto y herraje, con el mismo nombre con que sale de LEBRON. Son precios
+            de lista, con IVA: el descuento del proveedor se pone en cada presupuesto.
           </p>
         </div>
-        <Link href="/presupuestos" className="btn-secondary">
-          Ir a Presupuestos
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/precios/importar" className="btn-secondary">
+            Importar lista
+          </Link>
+          <Link href="/presupuestos" className="btn-secondary">
+            Ir a Presupuestos
+          </Link>
+        </div>
       </div>
 
       <div className="card">
@@ -223,6 +247,19 @@ export default function PreciosPage() {
           <div>
             <label className="label">Precio</label>
             <MoneyInput value={nuevoPrecio} onChange={setNuevoPrecio} />
+          </div>
+          <div>
+            <label className="label">Código del proveedor (opcional)</label>
+            <input className="input" value={nuevoCodigo} onChange={(e) => setNuevoCodigo(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Proveedor</label>
+            <input
+              className="input"
+              placeholder="Ej: Emporio del Terciado"
+              value={nuevoProveedor}
+              onChange={(e) => setNuevoProveedor(e.target.value)}
+            />
           </div>
           <div className="sm:col-span-4">
             <button className="btn-primary" disabled={guardando}>
@@ -261,9 +298,9 @@ export default function PreciosPage() {
                       {lista.map((p) => (
                         <div key={p.id} className="flex items-center gap-3 py-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm truncate">{p.nombre}</p>
-                            <p className="text-xs text-madera-400">
-                              Actualizado el {new Date(p.actualizadoEn).toLocaleDateString("es-AR")}
+                            <p className="text-sm break-words">{p.nombre}</p>
+                            <p className="text-xs text-madera-400 break-words" title={p.descripcion || undefined}>
+                              {detalleDePrecio(p)}
                             </p>
                           </div>
                           <div className="w-40 shrink-0">

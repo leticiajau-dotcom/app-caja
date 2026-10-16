@@ -6,6 +6,7 @@ import {
   agregarFilas,
   actualizarFilaPorId,
   actualizarFilasPorId,
+  asegurarPestaña,
   leerFilas,
   leerConfigValor,
   escribirConfigValor,
@@ -22,6 +23,7 @@ import type {
   EstadoPresupuesto,
   Modificacion,
   Movimiento,
+  CambioPrecio,
   Pago,
   Precio,
   Presupuesto,
@@ -1067,7 +1069,7 @@ export async function agregarPagoHistorico(
 // precios unitarios que usó: si después cambia la lista, un presupuesto ya
 // hecho no cambia solo (se puede volver a tomar la lista desde la pantalla).
 
-const TIPOS_PRECIO: TipoPrecio[] = ["placa", "canto", "herraje"];
+const TIPOS_PRECIO: TipoPrecio[] = ["placa", "canto", "herraje", "otro"];
 
 function rowToPrecio(r: Record<string, string>): Precio {
   return {
@@ -1077,12 +1079,23 @@ function rowToPrecio(r: Record<string, string>): Precio {
     precio: toNum(r.precio),
     actualizadoEn: r.actualizadoEn,
     usuarioId: r.usuarioId,
+    codigo: r.codigo ?? "",
+    proveedor: r.proveedor ?? "",
+    descripcion: r.descripcion ?? "",
+    contenido: toNum(r.contenido ?? "") || 1,
   };
 }
 
 function filaPrecio(p: Precio): (string | number)[] {
-  return [p.id, p.tipo, p.nombre, p.precio, p.actualizadoEn, p.usuarioId];
+  return [
+    p.id, p.tipo, p.nombre, p.precio, p.actualizadoEn, p.usuarioId,
+    p.codigo, p.proveedor, p.descripcion, p.contenido,
+  ];
 }
+
+const mismoPrecio = (a: Precio, b: Precio) =>
+  a.precio === b.precio && a.codigo === b.codigo && a.proveedor === b.proveedor &&
+  a.descripcion === b.descripcion && a.contenido === b.contenido;
 
 export async function listarPrecios(): Promise<Precio[]> {
   const rows = await leerFilas<Record<string, string>>(TABS.PRECIOS);
@@ -1090,11 +1103,13 @@ export async function listarPrecios(): Promise<Precio[]> {
 }
 
 /** Carga o cambia precios de la lista (por tipo + nombre, sin distinguir
- *  mayúsculas). Un precio en 0 no se guarda: es "todavía sin precio". */
-export async function guardarPrecios(
-  cambios: { tipo: TipoPrecio; nombre: string; precio: number }[],
-  usuarioId: string
-): Promise<Precio[]> {
+ *  mayúsculas). Un precio en 0 no se guarda: es "todavía sin precio". El
+ *  código, el proveedor, etc. que no vengan quedan como estaban: guardar un
+ *  precio desde un presupuesto no le borra el código. */
+export async function guardarPrecios(cambios: CambioPrecio[], usuarioId: string): Promise<Precio[]> {
+  // Una lista importada trae columnas que una planilla de antes no tiene en su
+  // encabezado: se lo completa, para que se lea al abrir la planilla.
+  if (cambios.some((c) => c.codigo)) await asegurarPestaña(TABS.PRECIOS);
   const lista = await listarPrecios();
   const porClave = new Map(lista.map((p) => [clavePrecio(p.tipo, p.nombre), p]));
   const ahora = new Date().toISOString();
@@ -1105,14 +1120,23 @@ export async function guardarPrecios(
     if (!nombre || !(c.precio > 0)) continue;
     const clave = clavePrecio(c.tipo, nombre);
     const existente = porClave.get(clave);
-    if (existente && existente.precio === c.precio) continue;
+    const delProveedor: Partial<Precio> = {
+      ...(c.codigo !== undefined && { codigo: c.codigo.trim() }),
+      ...(c.proveedor !== undefined && { proveedor: c.proveedor.trim() }),
+      ...(c.descripcion !== undefined && { descripcion: c.descripcion.trim() }),
+      ...(c.contenido !== undefined && c.contenido > 0 && { contenido: c.contenido }),
+    };
+    if (existente && mismoPrecio(existente, { ...existente, ...delProveedor, precio: c.precio })) continue;
     if (existente) {
-      const act: Precio = { ...existente, precio: c.precio, actualizadoEn: ahora, usuarioId };
+      const act: Precio = { ...existente, ...delProveedor, precio: c.precio, actualizadoEn: ahora, usuarioId };
       porClave.set(clave, act);
       if (nuevas.has(clave)) nuevas.set(clave, act);
       else actualizadas.set(clave, act);
     } else {
-      const nuevo: Precio = { id: randomUUID(), tipo: c.tipo, nombre, precio: c.precio, actualizadoEn: ahora, usuarioId };
+      const nuevo: Precio = {
+        id: randomUUID(), tipo: c.tipo, nombre, precio: c.precio, actualizadoEn: ahora, usuarioId,
+        codigo: "", proveedor: "", descripcion: "", contenido: 1, ...delProveedor,
+      };
       porClave.set(clave, nuevo);
       nuevas.set(clave, nuevo);
     }
@@ -1268,6 +1292,7 @@ export async function crearPresupuesto(datos: {
     archivo: datos.archivo,
     precios: preciosParaArchivo(datos.archivo, lista),
     extras: EXTRAS_INICIALES.map((e) => ({ ...e })),
+    descuento: 0,
   };
   const ahora = new Date().toISOString();
   const presupuesto: Presupuesto = {
@@ -1302,6 +1327,8 @@ export async function actualizarPresupuesto(
     /** Tomar otra vez todos los precios de la lista actual. */
     tomarPreciosDeLaLista?: boolean;
     extras?: Extra[];
+    /** Descuento del proveedor, en %. */
+    descuento?: number;
     estado?: "borrador" | "descartado";
   },
   usuarioId: string
@@ -1329,6 +1356,12 @@ export async function actualizarPresupuesto(
     p.datos.extras = cambios.extras
       .map((e) => ({ concepto: e.concepto.trim(), monto: Math.max(0, e.monto || 0), separado: Boolean(e.separado) }))
       .filter((e) => e.concepto);
+  }
+  if (cambios.descuento !== undefined) {
+    if (!(cambios.descuento >= 0 && cambios.descuento < 100)) {
+      throw new Error("El descuento tiene que ser un porcentaje entre 0 y 99.");
+    }
+    p.datos.descuento = cambios.descuento;
   }
   if (cambios.tomarPreciosDeLaLista) {
     p.datos.precios = preciosParaArchivo(p.datos.archivo, await listarPrecios());

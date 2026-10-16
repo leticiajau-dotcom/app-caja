@@ -1,10 +1,15 @@
 // Presupuestos a partir del archivo que exporta LEBRON (el plugin de SketchUp):
-// Reporte > "Presupuesto (archivo para la app de caja)".
+// el botón Presupuesto del panel lo manda directo a esta app.
 //
 // Cómo presupuesta Leticia: COSTO DE MATERIALES × COEFICIENTE. Hay dos
 // coeficientes, uno para placas y tapacantos y otro para herrajes (de entrada
 // valen lo mismo). La mano de obra, la colocación y el flete van aparte, sin
 // coeficiente.
+//
+// Los precios de la lista son los de LISTA del proveedor (con IVA). El descuento
+// que hace el proveedor cambia en cada compra, así que se carga en cada
+// presupuesto (arranca en 0%) y se descuenta del costo antes del coeficiente
+// (Leticia, 16/10/2026).
 //
 // El archivo trae las cantidades de toda la obra (las placas ya vienen del
 // optimizador de LEBRON, el canto redondeado como se compra) y, por cada
@@ -63,7 +68,7 @@ export function leerArchivoLebron(texto: string): ArchivoLebron {
   const formato = (crudo as { formato?: unknown } | null)?.formato;
   if (formato !== FORMATO_ARCHIVO_LEBRON) {
     throw new Error(
-      'Ese no es el archivo para presupuestar. En LEBRON: Reporte > "Presupuesto (archivo para la app de caja)".'
+      "Ese no es el archivo para presupuestar. En LEBRON se arma con el botón Presupuesto del panel."
     );
   }
   const r = ArchivoLebronSchema.safeParse(crudo);
@@ -73,7 +78,10 @@ export function leerArchivoLebron(texto: string): ArchivoLebron {
   return r.data;
 }
 
-export type TipoPrecio = "placa" | "canto" | "herraje";
+/** "otro": un artículo del proveedor que LEBRON no cuenta (el corte, un
+ *  revestimiento, el pegamento...). Queda en la lista con su código, para tener
+ *  el precio a mano, pero nunca entra solo en un presupuesto. */
+export type TipoPrecio = "placa" | "canto" | "herraje" | "otro";
 
 /** Clave de un precio: el tipo y el nombre tal como sale de LEBRON. */
 export function clavePrecio(tipo: TipoPrecio, nombre: string) {
@@ -104,6 +112,9 @@ export interface DatosPresupuesto {
   /** clavePrecio(tipo, nombre) -> precio unitario (placa entera, metro, unidad). */
   precios: Record<string, number>;
   extras: Extra[];
+  /** Descuento del proveedor, en %, sobre placas, tapacantos y herrajes. Los
+   *  presupuestos de antes del 16/10/2026 no lo tienen: 0. */
+  descuento?: number;
 }
 
 export interface LineaMaterial {
@@ -132,6 +143,10 @@ export interface PrecioDeItem {
 
 export interface ResultadoPresupuesto {
   lineas: LineaMaterial[];
+  /** El % de descuento del proveedor que se usó, y cuánta plata es. */
+  descuento: number;
+  descuentoMonto: number;
+  /** Costo de los materiales ya con el descuento del proveedor. */
   costoPlacasCanto: number;
   costoHerrajes: number;
   /** Materiales con sus coeficientes. */
@@ -201,8 +216,12 @@ export function calcularPresupuesto(
 
   const sumar = (filtro: (l: LineaMaterial) => boolean) =>
     lineas.filter(filtro).reduce((a, l) => a + l.subtotal, 0);
-  const costoPlacasCanto = sumar((l) => l.tipo !== "herraje");
-  const costoHerrajes = sumar((l) => l.tipo === "herraje");
+  const descuento = Math.min(Math.max(datos.descuento ?? 0, 0), 100);
+  const neto = 1 - descuento / 100;
+  const listaPlacasCanto = sumar((l) => l.tipo !== "herraje");
+  const listaHerrajes = sumar((l) => l.tipo === "herraje");
+  const costoPlacasCanto = listaPlacasCanto * neto;
+  const costoHerrajes = listaHerrajes * neto;
   const materiales = redondear(costoPlacasCanto * coefPlacas + costoHerrajes * coefHerrajes);
 
   const extras = datos.extras.filter((e) => e.monto > 0);
@@ -225,7 +244,7 @@ export function calcularPresupuesto(
       const tabla = l.tipo === "placa" ? it.placas_mm2 : l.tipo === "canto" ? it.canto_mm : it.herrajes;
       return (tabla[l.nombre] ?? 0) * it.cantidad;
     });
-    const partes = repartir(l.subtotal, pesos, superficie);
+    const partes = repartir(l.subtotal * neto, pesos, superficie);
     partes.forEach((parte, i) => {
       if (l.tipo === "herraje") herrajes[i] += parte;
       else placasCanto[i] += parte;
@@ -240,6 +259,8 @@ export function calcularPresupuesto(
 
   return {
     lineas,
+    descuento,
+    descuentoMonto: listaPlacasCanto + listaHerrajes - costoPlacasCanto - costoHerrajes,
     costoPlacasCanto,
     costoHerrajes,
     materiales,

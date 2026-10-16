@@ -148,7 +148,12 @@ export const HEADERS = {
   ],
   // Lista de precios para presupuestar (placas, tapacantos y herrajes, con el
   // mismo nombre con que salen de LEBRON). Ver src/lib/presupuesto.ts.
-  [TABS.PRECIOS]: ["id", "tipo", "nombre", "precio", "actualizadoEn", "usuarioId"],
+  // codigo/proveedor/descripcion/contenido: 16/10/2026, al final para que las filas
+  // de antes se sigan leyendo igual (vacías = cargadas a mano).
+  [TABS.PRECIOS]: [
+    "id", "tipo", "nombre", "precio", "actualizadoEn", "usuarioId",
+    "codigo", "proveedor", "descripcion", "contenido",
+  ],
   // "datos" es un JSON: el archivo de LEBRON, los precios usados y los extras.
   [TABS.PRESUPUESTOS]: [
     "id",
@@ -256,7 +261,7 @@ export function planillaUrl() {
  *  funcionalidad, como "Configuracion", no la tienen) y actualiza la fila
  *  de encabezados si quedó más corta que la actual (por columnas nuevas
  *  agregadas después). Se usa como reparación automática ante errores. */
-async function asegurarPestaña(tab: string) {
+export async function asegurarPestaña(tab: string) {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
   const headers = headersDeTab(tab) as unknown as string[];
