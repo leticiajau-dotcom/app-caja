@@ -313,29 +313,34 @@ export async function leerFilas<T extends Record<string, string>>(
 ): Promise<T[]> {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
+  // Los valores como se GUARDARON, no como la planilla los muestra (16/10/2026):
+  // la planilla está en castellano y devolvía 123824,34 con coma, que Number()
+  // no entiende. Los precios con centavos de la primera lista importada se
+  // leían como "no es un número" y la lista los mostraba en $0.
+  const pedido = {
+    spreadsheetId,
+    range: `${tab}!A2:Z`,
+    valueRenderOption: "UNFORMATTED_VALUE",
+  };
   let res;
   try {
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${tab}!A2:Z`,
-    });
+    res = await sheets.spreadsheets.values.get(pedido);
   } catch {
     // Puede ser una planilla creada antes de que esta pestaña existiera:
     // la creamos (o le completamos el encabezado) y reintentamos una vez.
     await asegurarPestaña(tab);
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${tab}!A2:Z`,
-    });
+    res = await sheets.spreadsheets.values.get(pedido);
   }
   const rows = res.data.values ?? [];
   const headers = headersDeTab(tab);
   return rows
-    .filter((row) => row.some((cell) => cell !== undefined && cell !== ""))
+    .filter((row) => row.some((cell) => cell !== undefined && cell !== null && cell !== ""))
     .map((row) => {
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => {
-        obj[h] = row[i] ?? "";
+        // Sin formato, un número llega como número y un sí/no como true/false:
+        // el resto de la app los lee como texto ("123824.34", "true").
+        obj[h] = row[i] === undefined || row[i] === null ? "" : String(row[i]);
       });
       return obj as T;
     });

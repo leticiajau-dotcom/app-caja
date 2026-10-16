@@ -48,7 +48,13 @@ import {
 } from "./presupuesto";
 
 const toBool = (v: string) => v === "true" || v === "TRUE" || v === "1";
-const toNum = (v: string) => (v === "" ? 0 : Number(v));
+// Un número que alguien escribió a mano en la planilla puede venir con coma
+// decimal ("1234,5"): también se entiende.
+const toNum = (v: string) => {
+  if (v === "") return 0;
+  const n = Number(v);
+  return Number.isNaN(n) ? Number(v.replace(/\./g, "").replace(",", ".")) : n;
+};
 
 // ---------------------------------------------------------------------------
 // Usuarios
