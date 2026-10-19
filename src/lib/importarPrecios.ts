@@ -4,12 +4,14 @@
 // importar la lista que le pase el proveedor. Una lista es un archivo CSV (lo
 // que guarda Excel con "Guardar como > CSV"), con un renglón por artículo.
 //
-// Cada artículo se reconoce por el CÓDIGO del proveedor: si ya está en la
-// lista de precios, se le cambia el precio (y sigue con el nombre de LEBRON que
-// ya tenía); si no, entra nuevo. Para que LEBRON lo use (placa, tapacanto,
-// herraje) el renglón trae además el nombre con que sale de LEBRON; sin ese
-// nombre entra como "otro": queda en la lista con su precio, pero no entra solo
-// en ningún presupuesto.
+// Un renglón que dice con qué nombre sale en LEBRON (placa, tapacanto, herraje)
+// actualiza ese precio. Uno que no lo dice (la lista tal cual la manda el
+// proveedor) se reconoce por el CÓDIGO del proveedor: actualiza todos los
+// precios que ya tienen ese código, con el nombre de LEBRON que ya tenían. Un
+// código puede ser de varios colores (19/10/2026: Emporio pone precio por grupo
+// en EGGER, "PG03", y por línea en FAPLAC, "Nórdica"). Sin nombre ni código
+// conocido entra como "otro": queda en la lista con su precio, pero no entra
+// solo en ningún presupuesto.
 //
 // Las columnas se buscan por su título, en cualquier orden y sin importar
 // mayúsculas ni acentos. Hacen falta el código y el precio.
@@ -218,30 +220,16 @@ const claveCodigo = (proveedor: string, codigo: string) =>
 
 /** Qué va a pasar con la lista de precios si se importan estas filas. */
 export function planDeImportacion(filas: FilaLista[], lista: Precio[]): PlanImportacion {
-  const porCodigo = new Map(
-    lista.filter((p) => p.codigo).map((p) => [claveCodigo(p.proveedor, p.codigo), p])
-  );
+  const porCodigo = new Map<string, Precio[]>();
+  for (const p of lista) {
+    if (!p.codigo) continue;
+    const clave = claveCodigo(p.proveedor, p.codigo);
+    porCodigo.set(clave, [...(porCodigo.get(clave) ?? []), p]);
+  }
   const porNombre = new Map(lista.map((p) => [clavePrecio(p.tipo, p.nombre), p]));
   // Si el archivo repite un artículo, vale el último renglón.
   const resultado = new Map<string, CambioImportado>();
-
-  for (const f of filas) {
-    let antes = porCodigo.get(claveCodigo(f.proveedor, f.codigo)) ?? null;
-    let tipo: TipoPrecio;
-    let nombre: string;
-    if (antes) {
-      // Ya relacionado con LEBRON: sigue con su nombre.
-      tipo = antes.tipo;
-      nombre = antes.nombre;
-    } else if (f.tipo && f.tipo !== "otro" && f.nombre) {
-      tipo = f.tipo;
-      nombre = f.nombre;
-      antes = porNombre.get(clavePrecio(tipo, nombre)) ?? null;
-    } else {
-      tipo = "otro";
-      nombre = f.descripcion || f.codigo;
-      antes = porNombre.get(clavePrecio(tipo, nombre)) ?? null;
-    }
+  const anotar = (f: FilaLista, tipo: TipoPrecio, nombre: string) => {
     const cambio: CambioPrecio = {
       tipo,
       nombre,
@@ -253,7 +241,20 @@ export function planDeImportacion(filas: FilaLista[], lista: Precio[]): PlanImpo
       descripcion: f.descripcion,
       contenido: f.contenido,
     };
-    resultado.set(clavePrecio(tipo, nombre), { cambio, antes });
+    resultado.set(clavePrecio(tipo, nombre), { cambio, antes: porNombre.get(clavePrecio(tipo, nombre)) ?? null });
+  };
+
+  for (const f of filas) {
+    if (f.tipo && f.tipo !== "otro" && f.nombre) {
+      anotar(f, f.tipo, f.nombre);
+      continue;
+    }
+    const conEseCodigo = porCodigo.get(claveCodigo(f.proveedor, f.codigo)) ?? [];
+    if (conEseCodigo.length > 0) {
+      conEseCodigo.forEach((p) => anotar(f, p.tipo, p.nombre));
+      continue;
+    }
+    anotar(f, "otro", f.descripcion || f.codigo);
   }
 
   const plan: PlanImportacion = { cambian: [], nuevos: [], iguales: 0, errores: [] };
