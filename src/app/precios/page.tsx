@@ -28,6 +28,19 @@ function detalleDePrecio(p: Precio) {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
+/** Para buscar sin pelear con acentos ni mayúsculas: "Coñac" -> "conac". */
+function sinAcentos(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/** El buscador (20/10/2026, con más de 600 precios cargados): cada palabra
+ *  escrita tiene que estar en el nombre, el código, la descripción o el
+ *  proveedor, en cualquier orden ("bisagra green", "kendal mdf", "280130"). */
+function coincide(p: Precio, palabras: string[]) {
+  const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor].join(" "));
+  return palabras.every((palabra) => texto.includes(palabra));
+}
+
 /** "2,5" o "2.5" -> 2.5 (NaN si no es un número). */
 function leerDecimal(texto: string) {
   return Number(texto.replace(",", "."));
@@ -41,6 +54,7 @@ export default function PreciosPage() {
 
   // Precios cambiados y todavía sin guardar: clave -> nuevo precio.
   const [cambios, setCambios] = useState<Record<string, number>>({});
+  const [busqueda, setBusqueda] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -90,13 +104,17 @@ export default function PreciosPage() {
     cargar();
   }, []);
 
+  const palabras = useMemo(() => sinAcentos(busqueda).split(/\s+/).filter(Boolean), [busqueda]);
+  const buscando = palabras.length > 0;
+
   const porTipo = useMemo(() => {
     const m = new Map<TipoPrecio, Precio[]>();
     for (const s of SECCIONES) m.set(s.tipo, []);
-    for (const p of precios) m.get(p.tipo)?.push(p);
+    for (const p of precios) if (coincide(p, palabras)) m.get(p.tipo)?.push(p);
     m.forEach((lista) => lista.sort((a, b) => a.nombre.localeCompare(b.nombre)));
     return m;
-  }, [precios]);
+  }, [precios, palabras]);
+  const encontrados = Array.from(porTipo.values()).reduce((a, lista) => a + lista.length, 0);
 
   async function guardar(lista: CambioPrecio[]) {
     setError("");
@@ -280,12 +298,30 @@ export default function PreciosPage() {
         </div>
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
         {aviso && !hayCambios && <p className="text-sm text-green-700 mb-3">{aviso}</p>}
+        <div className="mb-5">
+          <input
+            className="input"
+            type="search"
+            placeholder="Buscar por nombre, código o descripción (ej: kendal, 280130, bisagra green)"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          {buscando && !cargando && (
+            <p className="text-xs text-madera-500 mt-1">
+              {encontrados === 0
+                ? "Ningún precio con eso."
+                : `${encontrados} ${encontrados === 1 ? "precio" : "precios"} de ${precios.length}.`}
+            </p>
+          )}
+        </div>
         {cargando ? (
           <p className="text-madera-500 text-sm">Cargando...</p>
         ) : (
           <div className="space-y-6">
             {SECCIONES.map((s) => {
               const lista = porTipo.get(s.tipo) ?? [];
+              // Buscando, una sección sin nada que coincida no se muestra.
+              if (buscando && lista.length === 0) return null;
               return (
                 <div key={s.tipo}>
                   <h3 className="text-sm font-semibold text-madera-700 mb-2">
