@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/MoneyInput";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, sinAcentos } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import { clavePrecio, type TipoPrecio } from "@/lib/presupuesto";
 import type { CambioPrecio, DefaultsPresupuesto, Precio } from "@/lib/types";
@@ -26,11 +26,6 @@ function detalleDePrecio(p: Precio) {
   ].filter(Boolean);
   const texto = partes.join(" · ");
   return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
-/** Para buscar sin pelear con acentos ni mayúsculas: "Coñac" -> "conac". */
-function sinAcentos(texto: string) {
-  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 /** El buscador (20/10/2026, con más de 600 precios cargados): cada palabra

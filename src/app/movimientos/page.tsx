@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatFecha, formatFechaCorta, formatMoney } from "@/lib/format";
+import { formatFecha, formatFechaCorta, formatMoney, sinAcentos } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
 import { puedeRegistrarRetiros, soloPuedeRegistrarEgresos } from "@/lib/permisos";
@@ -295,7 +295,8 @@ export default function MovimientosPage() {
     return sesion.rol === "admin" || m.usuarioId === sesion.usuarioId;
   }
 
-  const textoBusqueda = busqueda.trim().toLowerCase();
+  // Sin acentos de los dos lados (20/10/2026, Leticia): "credito" encuentra "Crédito".
+  const textoBusqueda = sinAcentos(busqueda.trim());
   const movimientosFiltrados = textoBusqueda
     ? movimientos.filter((m) => {
         const cuenta = cuentasPorId.get(m.cuentaId);
@@ -309,7 +310,7 @@ export default function MovimientosPage() {
           usuariosPorId.get(m.usuarioId),
           m.usuarioRetiroId ? usuariosPorId.get(m.usuarioRetiroId) : undefined,
         ];
-        return campos.some((c) => c?.toLowerCase().includes(textoBusqueda));
+        return campos.some((c) => c && sinAcentos(c).includes(textoBusqueda));
       })
     : movimientos;
 

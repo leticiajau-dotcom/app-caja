@@ -1,3 +1,9 @@
+/** Para buscar sin pelear con acentos ni mayúsculas: "Crédito" -> "credito",
+ *  "Coñac" -> "conac". La usan los buscadores de Movimientos y de Precios. */
+export function sinAcentos(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export function formatMoney(valor: number, moneda: string) {
   try {
     return new Intl.NumberFormat("es-AR", {
