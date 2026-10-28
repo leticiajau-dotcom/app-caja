@@ -1,3 +1,4 @@
+import { Readable } from "stream";
 import { google } from "googleapis";
 
 /**
@@ -170,6 +171,11 @@ export const HEADERS = {
     "usuarioId",
     "creadoEn",
     "actualizadoEn",
+    // El diseño en 3D (27/10/2026): el link para el cliente (/ver/<tokenPublico>)
+    // y el archivo .glb en el Drive. Al final, para que las filas de antes se
+    // sigan leyendo igual.
+    "tokenPublico",
+    "modeloId",
   ],
 } as const;
 
@@ -493,6 +499,74 @@ export async function escribirConfigValor(clave: string, valor: string) {
   } else {
     await agregarFila(TABS.CONFIGURACION, [clave, valor]);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Archivos en el Drive de la cuenta conectada (los diseños en 3D de LEBRON).
+// Con el permiso "drive.file" la app solo ve los archivos que creó ella.
+// ---------------------------------------------------------------------------
+
+const CLAVE_CARPETA_DISEÑOS = "carpetaDisenos3dId";
+const NOMBRE_CARPETA_DISEÑOS = "Caja Negocio - Diseños 3D";
+
+async function carpetaDeDiseños(): Promise<string> {
+  const drive = getDriveClient();
+  const guardada = await leerConfigValor(CLAVE_CARPETA_DISEÑOS);
+  if (guardada) {
+    try {
+      const r = await drive.files.get({ fileId: guardada, fields: "id, trashed" });
+      if (r.data.id && !r.data.trashed) return guardada;
+    } catch {
+      // La borraron desde Drive: se crea otra.
+    }
+  }
+  const creada = await drive.files.create({
+    requestBody: { name: NOMBRE_CARPETA_DISEÑOS, mimeType: "application/vnd.google-apps.folder" },
+    fields: "id",
+  });
+  const id = creada.data.id!;
+  await escribirConfigValor(CLAVE_CARPETA_DISEÑOS, id);
+  return id;
+}
+
+/** Guarda un archivo en la carpeta de diseños y devuelve su id. Con
+ *  `reemplazaId`, le cambia el contenido a ese archivo (si todavía existe). */
+export async function guardarArchivoDrive(
+  nombre: string,
+  datos: Buffer,
+  tipo: string,
+  reemplazaId?: string | null
+): Promise<string> {
+  const drive = getDriveClient();
+  const media = () => ({ mimeType: tipo, body: Readable.from(datos) });
+  if (reemplazaId) {
+    try {
+      const r = await drive.files.update({
+        fileId: reemplazaId,
+        requestBody: { name: nombre },
+        media: media(),
+        fields: "id",
+      });
+      return r.data.id!;
+    } catch {
+      // Ya no está: se crea uno nuevo.
+    }
+  }
+  const carpeta = await carpetaDeDiseños();
+  const r = await drive.files.create({
+    requestBody: { name: nombre, parents: [carpeta] },
+    media: media(),
+    fields: "id",
+  });
+  return r.data.id!;
+}
+
+export async function leerArchivoDrive(id: string): Promise<Buffer> {
+  const r = await getDriveClient().files.get(
+    { fileId: id, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+  return Buffer.from(r.data as ArrayBuffer);
 }
 
 // ---------------------------------------------------------------------------

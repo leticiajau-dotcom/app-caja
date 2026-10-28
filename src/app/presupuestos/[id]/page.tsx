@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/MoneyInput";
+import TarjetaDiseno3D from "@/components/TarjetaDiseno3D";
 import { formatMoney } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import {
@@ -618,6 +619,8 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
         </div>
         <p className="text-right text-sm font-medium mt-2">Muebles: {formatMoney(resultado.muebles, moneda)}</p>
       </div>
+
+      <TarjetaDiseno3D presupuesto={presupuesto} hayCambios={hayCambios} />
 
       <div className="flex flex-wrap gap-2 justify-end">
         {presupuesto.estado === "borrador" && (

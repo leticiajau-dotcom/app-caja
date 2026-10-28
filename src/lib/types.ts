@@ -241,6 +241,10 @@ export interface Presupuesto {
   usuarioId: string;
   creadoEn: string;
   actualizadoEn: string;
+  /** El diseño en 3D que manda LEBRON: el link para el cliente es
+   *  /ver/<tokenPublico>, y el archivo .glb está en el Drive (modeloId). */
+  tokenPublico: string | null;
+  modeloId: string | null;
 }
 
 /** Valores de entrada de un presupuesto nuevo (Configuración). */

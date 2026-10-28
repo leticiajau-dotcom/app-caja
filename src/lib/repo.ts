@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import {
   TABS,
   agregarFila,
@@ -7,6 +7,7 @@ import {
   actualizarFilaPorId,
   actualizarFilasPorId,
   asegurarPestaña,
+  guardarArchivoDrive,
   leerFilas,
   leerConfigValor,
   escribirConfigValor,
@@ -1190,6 +1191,8 @@ function rowToPresupuesto(r: Record<string, string>): Presupuesto {
     usuarioId: r.usuarioId,
     creadoEn: r.creadoEn,
     actualizadoEn: r.actualizadoEn,
+    tokenPublico: r.tokenPublico || null,
+    modeloId: r.modeloId || null,
   };
 }
 
@@ -1209,6 +1212,8 @@ function filaPresupuesto(p: Presupuesto): (string | number)[] {
     p.usuarioId,
     p.creadoEn,
     p.actualizadoEn,
+    p.tokenPublico ?? "",
+    p.modeloId ?? "",
   ];
 }
 
@@ -1220,6 +1225,34 @@ export async function listarPresupuestos(): Promise<Presupuesto[]> {
 export async function obtenerPresupuesto(id: string): Promise<Presupuesto> {
   const p = (await listarPresupuestos()).find((x) => x.id === id);
   if (!p) throw new ApiError("Presupuesto no encontrado.", 404);
+  return p;
+}
+
+/** El presupuesto del link que se le manda al cliente. Uno descartado ya no
+ *  se muestra. */
+export async function obtenerPresupuestoPorToken(token: string): Promise<Presupuesto> {
+  const p = token.length >= 16 ? (await listarPresupuestos()).find((x) => x.tokenPublico === token) : undefined;
+  if (!p || p.estado === "descartado") {
+    throw new ApiError("Este link no existe o el presupuesto ya no está disponible.", 404);
+  }
+  return p;
+}
+
+/** Guarda el diseño en 3D (.glb) que manda LEBRON en el Drive, y le da al
+ *  presupuesto su link para el cliente (uno nuevo solo la primera vez: si se
+ *  vuelve a mandar el 3D, el link que ya tiene el cliente sigue andando). */
+export async function guardarModeloPresupuesto(id: string, datos: Buffer): Promise<Presupuesto> {
+  const p = await obtenerPresupuesto(id);
+  await asegurarPestaña(TABS.PRESUPUESTOS);
+  p.modeloId = await guardarArchivoDrive(
+    `${p.nombre} (${p.id}).glb`,
+    datos,
+    "model/gltf-binary",
+    p.modeloId
+  );
+  p.tokenPublico = p.tokenPublico || randomBytes(18).toString("base64url");
+  p.actualizadoEn = new Date().toISOString();
+  await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
   return p;
 }
 
@@ -1316,6 +1349,8 @@ export async function crearPresupuesto(datos: {
     usuarioId: datos.usuarioId,
     creadoEn: ahora,
     actualizadoEn: ahora,
+    tokenPublico: null,
+    modeloId: null,
   };
   await agregarFila(TABS.PRESUPUESTOS, filaPresupuesto(presupuesto));
   return presupuesto;
