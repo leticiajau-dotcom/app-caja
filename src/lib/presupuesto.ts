@@ -84,6 +84,16 @@ export function leerArchivoLebron(texto: string): ArchivoLebron {
  *  (ver DatosPresupuesto.agregados) y lleva el coeficiente de las placas. */
 export type TipoPrecio = "placa" | "canto" | "herraje" | "otro";
 
+/** Las palabras del tipo, para que los buscadores las encuentren: buscando
+ *  "tapacanto blanco laca" aparece el tapacanto Blanco laca EGGER (29/10/2026:
+ *  antes el tipo no contaba y esa búsqueda no encontraba nada). */
+export const PALABRAS_TIPO: Record<TipoPrecio, string> = {
+  placa: "placa placas",
+  canto: "tapacanto tapacantos canto",
+  herraje: "herraje herrajes",
+  otro: "otro otros",
+};
+
 /** Clave de un precio: el tipo y el nombre tal como sale de LEBRON. */
 export function clavePrecio(tipo: TipoPrecio, nombre: string) {
   return `${tipo}|${nombre.trim().toLowerCase()}`;

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/MoneyInput";
 import { formatMoney, sinAcentos } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
-import { clavePrecio, type TipoPrecio } from "@/lib/presupuesto";
+import { PALABRAS_TIPO, clavePrecio, type TipoPrecio } from "@/lib/presupuesto";
 import type { CambioPrecio, DefaultsPresupuesto, Precio } from "@/lib/types";
 
 const SECCIONES: { tipo: TipoPrecio; titulo: string; unidad: string; ejemplo: string }[] = [
@@ -29,10 +29,11 @@ function detalleDePrecio(p: Precio) {
 }
 
 /** El buscador (20/10/2026, con más de 600 precios cargados): cada palabra
- *  escrita tiene que estar en el nombre, el código, la descripción o el
- *  proveedor, en cualquier orden ("bisagra green", "kendal mdf", "280130"). */
+ *  escrita tiene que estar en el nombre, el código, la descripción, el
+ *  proveedor o el tipo, en cualquier orden ("bisagra green", "kendal mdf",
+ *  "280130", "tapacanto blanco laca"). */
 function coincide(p: Precio, palabras: string[]) {
-  const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor].join(" "));
+  const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor, PALABRAS_TIPO[p.tipo]].join(" "));
   return palabras.every((palabra) => texto.includes(palabra));
 }
 

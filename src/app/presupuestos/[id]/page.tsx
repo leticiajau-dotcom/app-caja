@@ -8,6 +8,7 @@ import TarjetaDiseno3D from "@/components/TarjetaDiseno3D";
 import { formatMoney, sinAcentos } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import {
+  PALABRAS_TIPO,
   calcularPresupuesto,
   clavePrecio,
   comoLoVeElCliente,
@@ -103,7 +104,7 @@ function AgregarArticulo({
   const palabras = sinAcentos(busqueda).split(/\s+/).filter(Boolean);
   const encontrados = (lista ?? [])
     .filter((p) => {
-      const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor].join(" "));
+      const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor, PALABRAS_TIPO[p.tipo]].join(" "));
       return palabras.every((w) => texto.includes(w));
     })
     .slice(0, 30);
