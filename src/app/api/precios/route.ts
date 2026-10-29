@@ -27,8 +27,6 @@ const PreciosSchema = z.object({
     .optional(),
   defaults: z
     .object({
-      coefPlacas: z.number().gt(0),
-      coefHerrajes: z.number().gt(0),
       validezDias: z.number().gt(0),
       nombreComercial: z.string().max(80).default(""),
       notaPie: z.string().max(1000).default(""),

@@ -37,11 +37,6 @@ function coincide(p: Precio, palabras: string[]) {
   return palabras.every((palabra) => texto.includes(palabra));
 }
 
-/** "2,5" o "2.5" -> 2.5 (NaN si no es un número). */
-function leerDecimal(texto: string) {
-  return Number(texto.replace(",", "."));
-}
-
 export default function PreciosPage() {
   const [precios, setPrecios] = useState<Precio[]>([]);
   const [defaults, setDefaults] = useState<DefaultsPresupuesto | null>(null);
@@ -63,8 +58,6 @@ export default function PreciosPage() {
   const [nuevoProveedor, setNuevoProveedor] = useState("");
 
   // Valores de entrada de un presupuesto nuevo
-  const [coefPlacas, setCoefPlacas] = useState("");
-  const [coefHerrajes, setCoefHerrajes] = useState("");
   const [validez, setValidez] = useState("");
   const [nombreComercial, setNombreComercial] = useState("");
   const [notaPie, setNotaPie] = useState("");
@@ -74,8 +67,6 @@ export default function PreciosPage() {
 
   function aplicarDefaults(d: DefaultsPresupuesto) {
     setDefaults(d);
-    setCoefPlacas(String(d.coefPlacas).replace(".", ","));
-    setCoefHerrajes(String(d.coefHerrajes).replace(".", ","));
     setValidez(String(d.validezDias));
     setNombreComercial(d.nombreComercial);
     setNotaPie(d.notaPie);
@@ -166,16 +157,10 @@ export default function PreciosPage() {
     setErrorDefaults("");
     setAvisoDefaults("");
     const d = {
-      coefPlacas: leerDecimal(coefPlacas),
-      coefHerrajes: leerDecimal(coefHerrajes),
       validezDias: Number(validez),
       nombreComercial,
       notaPie,
     };
-    if (!(d.coefPlacas > 0) || !(d.coefHerrajes > 0)) {
-      setErrorDefaults("Los coeficientes tienen que ser números mayores a 0 (por ejemplo 2,5).");
-      return;
-    }
     if (!(d.validezDias > 0)) {
       setErrorDefaults("La validez tiene que ser de al menos 1 día.");
       return;
@@ -190,7 +175,7 @@ export default function PreciosPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       if (data.defaults) aplicarDefaults(data.defaults);
-      setAvisoDefaults("Guardado. Vale para los presupuestos nuevos.");
+      setAvisoDefaults("Guardado.");
     } catch (e: any) {
       setErrorDefaults(e.message ?? "Error inesperado.");
     } finally {
@@ -356,29 +341,12 @@ export default function PreciosPage() {
       </div>
 
       <div className="card">
-        <h2 className="font-semibold text-lg mb-1">Valores de entrada de un presupuesto nuevo</h2>
+        <h2 className="font-semibold text-lg mb-1">La hoja del cliente</h2>
         <p className="text-xs text-madera-500 mb-4">
-          Cada presupuesto los puede cambiar después. Los coeficientes multiplican el costo de los materiales.
+          Lo que sale en la hoja del presupuesto que ve el cliente. El coeficiente no va acá: cada presupuesto
+          nuevo arranca con el del último presupuesto que hiciste, y en cada uno lo podés cambiar.
         </p>
         <form onSubmit={guardarDefaults} className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <label className="label">Coeficiente de placas y tapacantos</label>
-            <input
-              className="input"
-              inputMode="decimal"
-              value={coefPlacas}
-              onChange={(e) => setCoefPlacas(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label">Coeficiente de herrajes</label>
-            <input
-              className="input"
-              inputMode="decimal"
-              value={coefHerrajes}
-              onChange={(e) => setCoefHerrajes(e.target.value)}
-            />
-          </div>
           <div>
             <label className="label">Validez del presupuesto (días)</label>
             <input
@@ -388,7 +356,7 @@ export default function PreciosPage() {
               onChange={(e) => setValidez(e.target.value)}
             />
           </div>
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-2">
             <label className="label">Nombre en la hoja del cliente</label>
             <input
               className="input"

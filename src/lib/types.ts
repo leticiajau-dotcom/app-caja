@@ -254,6 +254,9 @@ export interface Presupuesto {
 
 /** Valores de entrada de un presupuesto nuevo (Configuración). */
 export interface DefaultsPresupuesto {
+  /** Desde el 29/10/2026 un presupuesto nuevo arranca con los coeficientes del
+   *  último presupuesto (ver coeficientesParaPresupuestoNuevo): estos, que ya no
+   *  se cargan en ningún lado, quedan solo para el primero de todos. */
   coefPlacas: number;
   coefHerrajes: number;
   /** Días de validez que se imprimen en la hoja del cliente. */

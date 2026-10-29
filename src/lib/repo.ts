@@ -1302,17 +1302,25 @@ export async function obtenerDefaultsPresupuesto(): Promise<DefaultsPresupuesto>
   };
 }
 
-export async function guardarDefaultsPresupuesto(d: DefaultsPresupuesto) {
-  if (!(d.coefPlacas > 0) || !(d.coefHerrajes > 0)) {
-    throw new Error("Los coeficientes tienen que ser mayores a 0.");
-  }
+export async function guardarDefaultsPresupuesto(d: Omit<DefaultsPresupuesto, "coefPlacas" | "coefHerrajes">) {
   if (!(d.validezDias > 0)) throw new Error("La validez tiene que ser de al menos 1 día.");
-  await escribirConfigValor(CLAVE_COEF_PLACAS, String(d.coefPlacas));
-  await escribirConfigValor(CLAVE_COEF_HERRAJES, String(d.coefHerrajes));
   await escribirConfigValor(CLAVE_VALIDEZ_DIAS, String(Math.round(d.validezDias)));
   await escribirConfigValor(CLAVE_NOMBRE_COMERCIAL, d.nombreComercial.trim());
   await escribirConfigValor(CLAVE_NOTA_PIE, d.notaPie.trim());
   return obtenerDefaultsPresupuesto();
+}
+
+/** Los coeficientes con que arranca un presupuesto nuevo: los del último
+ *  presupuesto que se hizo (Leticia, 29/10/2026: así no hay que cambiarlos a mano
+ *  cada vez, y el que se ajusta en un presupuesto sigue en el próximo). Los
+ *  descartados no cuentan. Si todavía no hay ninguno, los de la Configuración. */
+async function coeficientesParaPresupuestoNuevo(defaults: DefaultsPresupuesto) {
+  const ultimo = (await listarPresupuestos())
+    .filter((p) => p.estado !== "descartado")
+    .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn))[0];
+  return ultimo
+    ? { coefPlacas: ultimo.coefPlacas, coefHerrajes: ultimo.coefHerrajes }
+    : { coefPlacas: defaults.coefPlacas, coefHerrajes: defaults.coefHerrajes };
 }
 
 /** El cliente con ese nombre (sin distinguir mayúsculas), o uno nuevo sin
@@ -1349,6 +1357,7 @@ export async function crearPresupuesto(datos: {
   }
 
   const [lista, defaults] = await Promise.all([listarPrecios(), obtenerDefaultsPresupuesto()]);
+  const { coefPlacas, coefHerrajes } = await coeficientesParaPresupuestoNuevo(defaults);
   const contenido: DatosPresupuesto = {
     archivo: datos.archivo,
     precios: preciosParaArchivo(datos.archivo, lista),
@@ -1362,11 +1371,11 @@ export async function crearPresupuesto(datos: {
     nombre,
     estado: "borrador",
     moneda: datos.moneda.trim().toUpperCase() || "ARS",
-    coefPlacas: defaults.coefPlacas,
-    coefHerrajes: defaults.coefHerrajes,
+    coefPlacas,
+    coefHerrajes,
     porModulo: false,
     datos: contenido,
-    total: calcularPresupuesto(contenido, defaults.coefPlacas, defaults.coefHerrajes).total,
+    total: calcularPresupuesto(contenido, coefPlacas, coefHerrajes).total,
     proyectoId: null,
     usuarioId: datos.usuarioId,
     creadoEn: ahora,
