@@ -51,6 +51,15 @@ export function formatFechaCorta(iso: string) {
   });
 }
 
+/** Un momento con hora (ISO), en la hora de quien mira: "29/10 a las 18:40". */
+export function formatDiaYHora(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dia = d.toLocaleDateString("es-AR", { day: "numeric", month: "numeric" });
+  const hora = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${dia} a las ${hora}`;
+}
+
 export const MONEDAS_SUGERIDAS = [
   { value: "ARS", label: "Peso argentino (ARS)" },
   { value: "USD", label: "Dólar estadounidense (USD)" },

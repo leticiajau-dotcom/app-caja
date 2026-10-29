@@ -245,6 +245,11 @@ export interface Presupuesto {
    *  /ver/<tokenPublico>, y el archivo .glb está en el Drive (modeloId). */
   tokenPublico: string | null;
   modeloId: string | null;
+  /** Cuándo abrió el cliente el link: la primera y la última vez, y cuántas
+   *  veces (no cuenta quien tiene sesión en la app). */
+  vistoPrimero: string | null;
+  vistoUltimo: string | null;
+  vistas: number;
 }
 
 /** Valores de entrada de un presupuesto nuevo (Configuración). */

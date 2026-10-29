@@ -19,7 +19,7 @@ const ActualizarSchema = z.object({
   precios: z
     .array(
       z.object({
-        tipo: z.enum(["placa", "canto", "herraje"]),
+        tipo: z.enum(["placa", "canto", "herraje", "otro"]),
         nombre: z.string().min(1),
         precio: z.number().min(0),
       })
@@ -30,6 +30,22 @@ const ActualizarSchema = z.object({
     .array(z.object({ concepto: z.string(), monto: z.number().min(0), separado: z.boolean() }))
     .optional(),
   descuento: z.number().min(0).lt(100).optional(),
+  materiales: z
+    .record(z.string(), z.object({ activo: z.boolean().optional(), cantidad: z.number().min(0).optional() }))
+    .optional(),
+  agregados: z
+    .array(
+      z.object({
+        tipo: z.enum(["placa", "canto", "herraje", "otro"]),
+        nombre: z.string().min(1).max(200),
+        cantidad: z.number().min(0),
+      })
+    )
+    .max(100)
+    .optional(),
+  muebles: z
+    .record(z.string(), z.object({ nombre: z.string().max(150).optional(), medidas: z.string().max(300).optional() }))
+    .optional(),
   estado: z.enum(["borrador", "descartado"]).optional(),
 });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Visor3D from "@/components/Visor3D";
+import { formatDiaYHora } from "@/lib/format";
 import type { Presupuesto } from "@/lib/types";
 
 /** En la pantalla del presupuesto: el link para el cliente (la hoja con el
@@ -55,6 +56,23 @@ export default function TarjetaDiseno3D({
           lo acerca y abre puertas y cajones. No necesita entrar a la app.
         </p>
       </div>
+      <p className="text-sm text-madera-700">
+        {presupuesto.vistoPrimero ? (
+          <>
+            👁 El cliente lo abrió el {formatDiaYHora(presupuesto.vistoPrimero)}
+            {presupuesto.vistas > 1 && presupuesto.vistoUltimo && (
+              <>
+                {" "}
+                ({presupuesto.vistas} veces; la última, el {formatDiaYHora(presupuesto.vistoUltimo)})
+              </>
+            )}
+            .
+          </>
+        ) : (
+          "El cliente todavía no abrió el link."
+        )}
+        <span className="text-xs text-madera-400"> Si lo abrís vos con la sesión de la app iniciada, no cuenta.</span>
+      </p>
       {presupuesto.estado === "descartado" && (
         <p className="text-sm text-amber-800">Está descartado: el link no se abre hasta que lo recuperes.</p>
       )}

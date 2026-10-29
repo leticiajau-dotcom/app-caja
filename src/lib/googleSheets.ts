@@ -176,6 +176,11 @@ export const HEADERS = {
     // sigan leyendo igual.
     "tokenPublico",
     "modeloId",
+    // Cuándo abrió el cliente ese link (29/10/2026): la primera y la última
+    // vez, y cuántas veces. Las vistas de alguien con sesión en la app no cuentan.
+    "vistoPrimero",
+    "vistoUltimo",
+    "vistas",
   ],
 } as const;
 
@@ -474,6 +479,36 @@ export async function actualizarFilaPorId(
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${tab}!A${rowNumber}:${lastCol}${rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [valores] },
+  });
+}
+
+/** Sobrescribe solo algunas columnas seguidas de una fila (por id), desde la
+ *  columna `desde`: lo que escribe otro pedido en el resto de la fila no se pisa. */
+export async function actualizarCeldasPorId(
+  tab: string,
+  id: string,
+  desde: string,
+  valores: (string | number)[]
+) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!A2:A`,
+  });
+  const idx = (res.data.values ?? []).map((r) => r[0]).indexOf(id);
+  if (idx === -1) {
+    throw new Error(`No se encontró la fila con id ${id} en ${tab}`);
+  }
+  const rowNumber = idx + 2;
+  const primera = headersDeTab(tab).indexOf(desde);
+  if (primera === -1) throw new Error(`La pestaña "${tab}" no tiene la columna "${desde}".`);
+  const columna = (i: number) => String.fromCharCode("A".charCodeAt(0) + i);
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${tab}!${columna(primera)}${rowNumber}:${columna(primera + valores.length - 1)}${rowNumber}`,
     valueInputOption: "RAW",
     requestBody: { values: [valores] },
   });

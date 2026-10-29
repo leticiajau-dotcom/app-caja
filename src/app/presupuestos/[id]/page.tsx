@@ -5,23 +5,35 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/MoneyInput";
 import TarjetaDiseno3D from "@/components/TarjetaDiseno3D";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, sinAcentos } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import {
   calcularPresupuesto,
   clavePrecio,
+  comoLoVeElCliente,
+  type ArticuloAgregado,
+  type CambioMaterial,
+  type CambioMueble,
   type Extra,
   type LineaMaterial,
   type TipoPrecio,
 } from "@/lib/presupuesto";
 import { ETIQUETA_ESTADO } from "@/lib/presupuestoEtiquetas";
-import type { Cliente, Presupuesto } from "@/lib/types";
+import type { Cliente, Precio, Presupuesto } from "@/lib/types";
 
 const GRUPOS: { tipo: TipoPrecio; titulo: string; precioDe: string }[] = [
   { tipo: "placa", titulo: "Placas", precioDe: "Precio por placa" },
   { tipo: "canto", titulo: "Tapacantos", precioDe: "Precio por metro" },
   { tipo: "herraje", titulo: "Herrajes", precioDe: "Precio por unidad" },
+  { tipo: "otro", titulo: "Otros artículos", precioDe: "Precio por unidad" },
 ];
+
+const NOMBRE_TIPO: Record<TipoPrecio, string> = {
+  placa: "Placa",
+  canto: "Tapacanto",
+  herraje: "Herraje",
+  otro: "Otro",
+};
 
 /** "2,5" o "2.5" -> 2.5 (NaN si no es un número). */
 function leerDecimal(texto: string) {
@@ -32,9 +44,133 @@ function textoCoef(v: number) {
   return String(v).replace(".", ",");
 }
 
+function textoCantidad(v: number) {
+  return v.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+}
+
 function cantidadConUnidad(l: LineaMaterial) {
-  const numero = l.cantidad.toLocaleString("es-AR", { maximumFractionDigits: 2 });
-  return `${numero} ${l.unidad}`;
+  return `${textoCantidad(l.cantidad)} ${l.unidad}`;
+}
+
+/** Una cantidad escrita a mano (con coma o punto). Vacío cuenta como 0. */
+function CantidadInput({ valor, onChange }: { valor: number; onChange: (v: number) => void }) {
+  const aTexto = (v: number) => String(v).replace(".", ",");
+  const [texto, setTexto] = useState(aTexto(valor));
+  useEffect(() => {
+    // Si la cantidad cambió desde afuera (al guardar, por ejemplo), mostrar la nueva.
+    if ((texto.trim() === "" ? 0 : leerDecimal(texto)) !== valor) setTexto(aTexto(valor));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valor]);
+  return (
+    <input
+      className="input py-1 px-2 text-right min-w-0"
+      inputMode="decimal"
+      value={texto}
+      onChange={(e) => {
+        setTexto(e.target.value);
+        const v = e.target.value.trim() === "" ? 0 : leerDecimal(e.target.value);
+        if (v >= 0) onChange(v);
+      }}
+    />
+  );
+}
+
+/** Buscar en la lista de precios algo que LEBRON no cuenta (el corte, una
+ *  mesada, un vidrio...) y sumarlo al presupuesto. */
+function AgregarArticulo({
+  yaEstan,
+  onAgregar,
+}: {
+  yaEstan: Set<string>;
+  onAgregar: (p: Precio) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [lista, setLista] = useState<Precio[] | null>(null);
+  const [error, setError] = useState("");
+  const [busqueda, setBusqueda] = useState("");
+
+  useEffect(() => {
+    if (!abierto || lista) return;
+    fetch("/api/precios")
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        setLista(d.precios);
+      })
+      .catch((e) => setError(e.message || "No se pudo leer la lista de precios."));
+  }, [abierto, lista]);
+
+  const palabras = sinAcentos(busqueda).split(/\s+/).filter(Boolean);
+  const encontrados = (lista ?? [])
+    .filter((p) => {
+      const texto = sinAcentos([p.nombre, p.codigo, p.descripcion, p.proveedor].join(" "));
+      return palabras.every((w) => texto.includes(w));
+    })
+    .slice(0, 30);
+
+  if (!abierto) {
+    return (
+      <button type="button" className="btn-secondary text-sm py-1 mt-4" onClick={() => setAbierto(true)}>
+        + Agregar un artículo de la lista
+      </button>
+    );
+  }
+  return (
+    <div className="mt-4 rounded-lg border border-madera-200 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium">Agregar algo que LEBRON no cuenta</p>
+        <button
+          type="button"
+          className="text-sm text-madera-400 hover:text-madera-700"
+          onClick={() => setAbierto(false)}
+        >
+          Cerrar
+        </button>
+      </div>
+      <input
+        className="input"
+        autoFocus
+        placeholder="Buscá en la lista de precios: corte, mesada, vidrio..."
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {!lista && !error && <p className="text-sm text-madera-500">Cargando la lista...</p>}
+      {lista && encontrados.length === 0 && (
+        <p className="text-sm text-madera-500">
+          No está en la lista. Cargalo primero en{" "}
+          <Link href="/precios" className="underline">
+            Precios
+          </Link>{" "}
+          y después agregalo acá.
+        </p>
+      )}
+      <div className="divide-y divide-madera-100 max-h-72 overflow-y-auto">
+        {encontrados.map((p) => {
+          const esta = yaEstan.has(clavePrecio(p.tipo, p.nombre));
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={esta}
+              onClick={() => onAgregar(p)}
+              className="w-full text-left flex items-center justify-between gap-3 py-2 px-1 text-sm hover:bg-madera-50 disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              <span className="min-w-0">
+                <span className="block truncate">{p.nombre}</span>
+                <span className="block text-xs text-madera-500 truncate">
+                  {NOMBRE_TIPO[p.tipo]}
+                  {p.codigo && ` · ${p.codigo}`}
+                  {esta && " · ya está en el presupuesto"}
+                </span>
+              </span>
+              <span className="shrink-0">{formatMoney(p.precio, "ARS")}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function PresupuestoPage({ params }: { params: { id: string } }) {
@@ -57,6 +193,10 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
     Record<string, { tipo: TipoPrecio; nombre: string; precio: number }>
   >({});
   const [extras, setExtras] = useState<Extra[]>([]);
+  const [materiales, setMateriales] = useState<Record<string, CambioMaterial>>({});
+  const [agregados, setAgregados] = useState<ArticuloAgregado[]>([]);
+  // Nombre y medidas de cada mueble tal como los va a ver el cliente.
+  const [muebles, setMuebles] = useState<{ nombre: string; medidas: string }[]>([]);
   const [hayCambios, setHayCambios] = useState(false);
 
   const [guardando, setGuardando] = useState(false);
@@ -74,6 +214,9 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
     setPrecios({ ...p.datos.precios });
     setPreciosCambiados({});
     setExtras(p.datos.extras.map((e) => ({ ...e })));
+    setMateriales({ ...(p.datos.materiales ?? {}) });
+    setAgregados((p.datos.agregados ?? []).map((a) => ({ ...a })));
+    setMuebles(p.datos.archivo.items.map((it, i) => comoLoVeElCliente(it, p.datos.muebles?.[i])));
     setHayCambios(false);
   }
 
@@ -120,14 +263,39 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
   const descuento = descuentoTexto.trim() === "" ? 0 : leerDecimal(descuentoTexto);
   const descuentoValido = descuento >= 0 && descuento < 100;
 
+  const cambiosMuebles = useMemo(
+    () => Object.fromEntries(muebles.map((m, i) => [String(i), m])) as Record<string, CambioMueble>,
+    [muebles]
+  );
+
   const resultado = useMemo(() => {
     if (!presupuesto) return null;
     return calcularPresupuesto(
-      { archivo: presupuesto.datos.archivo, precios, extras, descuento: descuentoValido ? descuento : 0 },
+      {
+        archivo: presupuesto.datos.archivo,
+        precios,
+        extras,
+        descuento: descuentoValido ? descuento : 0,
+        materiales,
+        agregados,
+        muebles: cambiosMuebles,
+      },
       coefValidos ? coefPlacas : 1,
       coefValidos ? coefHerrajes : 1
     );
-  }, [presupuesto, precios, extras, coefPlacas, coefHerrajes, coefValidos, descuento, descuentoValido]);
+  }, [
+    presupuesto,
+    precios,
+    extras,
+    materiales,
+    agregados,
+    cambiosMuebles,
+    coefPlacas,
+    coefHerrajes,
+    coefValidos,
+    descuento,
+    descuentoValido,
+  ]);
 
   const editable = presupuesto?.estado === "borrador";
 
@@ -135,6 +303,50 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
     const clave = clavePrecio(l.tipo, l.nombre);
     setPrecios((p) => ({ ...p, [clave]: valor }));
     setPreciosCambiados((c) => ({ ...c, [clave]: { tipo: l.tipo, nombre: l.nombre, precio: valor } }));
+    setHayCambios(true);
+  }
+
+  /** Tildar/destildar un material o cambiarle la cantidad. Lo que vuelve a
+   *  quedar como vino de LEBRON no se guarda como cambio. */
+  function cambiarMaterial(l: LineaMaterial, cambio: CambioMaterial) {
+    const clave = clavePrecio(l.tipo, l.nombre);
+    if (l.agregada && cambio.cantidad !== undefined) {
+      const cantidad = cambio.cantidad;
+      setAgregados((lista) => lista.map((a) => (clavePrecio(a.tipo, a.nombre) === clave ? { ...a, cantidad } : a)));
+    } else {
+      setMateriales((m) => {
+        const actual: CambioMaterial = { ...m[clave], ...cambio };
+        if (actual.activo !== false) delete actual.activo;
+        if (actual.cantidad === undefined || actual.cantidad === l.cantidadLebron) delete actual.cantidad;
+        const nuevo = { ...m };
+        if (Object.keys(actual).length > 0) nuevo[clave] = actual;
+        else delete nuevo[clave];
+        return nuevo;
+      });
+    }
+    setHayCambios(true);
+  }
+
+  function agregarArticulo(p: Precio) {
+    const clave = clavePrecio(p.tipo, p.nombre);
+    setAgregados((lista) => [...lista, { tipo: p.tipo, nombre: p.nombre, cantidad: 1 }]);
+    setPrecios((actuales) => ({ ...actuales, [clave]: p.precio }));
+    setHayCambios(true);
+  }
+
+  function quitarArticulo(l: LineaMaterial) {
+    const clave = clavePrecio(l.tipo, l.nombre);
+    setAgregados((lista) => lista.filter((a) => clavePrecio(a.tipo, a.nombre) !== clave));
+    setMateriales((m) => {
+      const nuevo = { ...m };
+      delete nuevo[clave];
+      return nuevo;
+    });
+    setHayCambios(true);
+  }
+
+  function cambiarMueble(i: number, cambio: Partial<{ nombre: string; medidas: string }>) {
+    setMuebles((lista) => lista.map((m, j) => (j === i ? { ...m, ...cambio } : m)));
     setHayCambios(true);
   }
 
@@ -182,6 +394,9 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
       descuento,
       precios: Object.values(preciosCambiados),
       extras,
+      materiales,
+      agregados,
+      muebles: cambiosMuebles,
     });
     if (ok) {
       setAviso(
@@ -411,21 +626,22 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
         </div>
         <p className="text-xs text-madera-500 mb-4">
           Las cantidades vienen de LEBRON: las placas son las que hay que comprar (las del optimizador) y el
-          tapacanto, redondeado como se compra.
+          tapacanto, redondeado como se compra. Podés cambiarlas, y lo que destildás no se cobra (por ejemplo, si
+          el cliente compra los herrajes).
           {!archivo.placas_optimizadas && " OJO: este diseño trae las placas estimadas por superficie."}
         </p>
         <div className="space-y-6">
           {GRUPOS.map((g) => {
             const lineas = resultado.lineas.filter((l) => l.tipo === g.tipo);
             if (lineas.length === 0) return null;
-            const subtotal = lineas.reduce((a, l) => a + l.subtotal, 0);
+            const subtotal = lineas.filter((l) => l.activa).reduce((a, l) => a + l.subtotal, 0);
             return (
               <div key={g.tipo}>
                 <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-madera-500 uppercase mb-1">
-                  <span className="col-span-5">{g.titulo}</span>
-                  <span className="col-span-2 text-right">Cantidad</span>
-                  <span className="col-span-3">{g.precioDe}</span>
-                  <span className="col-span-2 text-right">Subtotal</span>
+                  <span className="col-span-12 sm:col-span-5">{g.titulo}</span>
+                  <span className="hidden sm:block sm:col-span-2 text-right">Cantidad</span>
+                  <span className="hidden sm:block sm:col-span-3">{g.precioDe}</span>
+                  <span className="hidden sm:block sm:col-span-2 text-right">Subtotal</span>
                 </div>
                 <div className="divide-y divide-madera-100">
                   {lineas.map((l) => (
@@ -435,12 +651,51 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
                         l.sinPrecio ? "bg-red-50 -mx-2 px-2 rounded" : ""
                       }`}
                     >
-                      <span className="col-span-5 min-w-0 truncate" title={l.nombre}>
-                        {l.nombre}
-                        {l.sinPrecio && <span className="text-xs text-red-600"> · sin precio</span>}
+                      <span className="col-span-12 sm:col-span-5 min-w-0 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="shrink-0"
+                          disabled={!editable}
+                          checked={l.activa}
+                          title={l.activa ? "Se cobra. Destildalo para no cobrarlo." : "No se cobra."}
+                          onChange={(e) => cambiarMaterial(l, { activo: e.target.checked })}
+                        />
+                        <span
+                          className={`min-w-0 truncate ${l.activa ? "" : "line-through text-madera-400"}`}
+                          title={l.nombre}
+                        >
+                          {l.nombre}
+                          {l.sinPrecio && <span className="text-xs text-red-600"> · sin precio</span>}
+                          {!l.activa && <span className="text-xs inline-block ml-1">· no se cobra</span>}
+                        </span>
+                        {l.agregada && editable && (
+                          <button
+                            type="button"
+                            className="shrink-0 text-madera-400 hover:text-red-600 text-xs"
+                            title="Quitar del presupuesto"
+                            onClick={() => quitarArticulo(l)}
+                          >
+                            ✕
+                          </button>
+                        )}
                       </span>
-                      <span className="col-span-2 text-right text-madera-600">{cantidadConUnidad(l)}</span>
-                      <span className="col-span-3">
+                      <span className="col-span-4 sm:col-span-2 text-right text-madera-600">
+                        {editable ? (
+                          <span className="flex items-center gap-1">
+                            <CantidadInput valor={l.cantidad} onChange={(v) => cambiarMaterial(l, { cantidad: v })} />
+                            <span className="text-xs sm:w-9 text-left shrink-0">{l.unidad}</span>
+                          </span>
+                        ) : (
+                          cantidadConUnidad(l)
+                        )}
+                        {l.cantidadLebron !== null && l.cantidad !== l.cantidadLebron && (
+                          <span className="block text-xs text-madera-400">
+                            LEBRON: {textoCantidad(l.cantidadLebron)}
+                          </span>
+                        )}
+                        {l.agregada && <span className="block text-xs text-madera-400">agregado</span>}
+                      </span>
+                      <span className="col-span-4 sm:col-span-3">
                         {editable ? (
                           <MoneyInput
                             className="input py-1"
@@ -451,7 +706,13 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
                           formatMoney(l.precioUnitario, moneda)
                         )}
                       </span>
-                      <span className="col-span-2 text-right">{formatMoney(l.subtotal, moneda)}</span>
+                      <span
+                        className={`col-span-4 sm:col-span-2 text-right text-xs sm:text-sm whitespace-nowrap ${
+                          l.activa ? "" : "line-through text-madera-400"
+                        }`}
+                      >
+                        {formatMoney(l.subtotal, moneda)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -462,6 +723,12 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
             );
           })}
         </div>
+        {editable && (
+          <AgregarArticulo
+            yaEstan={new Set(resultado.lineas.map((l) => clavePrecio(l.tipo, l.nombre)))}
+            onAgregar={agregarArticulo}
+          />
+        )}
         {resultado.descuento > 0 && (
           <p className="text-right text-sm text-madera-600 mt-3">
             Descuento del proveedor ({textoCoef(resultado.descuento)}%):{" "}
@@ -536,7 +803,10 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
         <div className="space-y-1.5 text-sm">
           <div className="flex justify-between gap-3">
             <span className="text-madera-600">
-              Placas y tapacantos: {formatMoney(resultado.costoPlacasCanto, moneda)} × {textoCoef(coefPlacas)}
+              {resultado.lineas.some((l) => l.activa && l.tipo === "otro")
+                ? "Placas, tapacantos y otros"
+                : "Placas y tapacantos"}
+              : {formatMoney(resultado.costoPlacasCanto, moneda)} × {textoCoef(coefPlacas)}
             </span>
             <span>{formatMoney(resultado.costoPlacasCanto * coefPlacas, moneda)}</span>
           </div>
@@ -578,7 +848,7 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <h2 className="font-semibold text-lg">Precio por módulo</h2>
+          <h2 className="font-semibold text-lg">Muebles y precio por módulo</h2>
           <label className="text-sm text-madera-700 flex items-center gap-2">
             <input
               type="checkbox"
@@ -589,33 +859,70 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
                 setHayCambios(true);
               }}
             />
-            Mostrarlo en la hoja del cliente
+            Mostrar el precio de cada uno en la hoja del cliente
           </label>
         </div>
         <p className="text-xs text-madera-500 mb-4">
-          El costo real de la obra repartido entre los módulos: cada uno paga las placas según la superficie
-          que usa, más su tapacanto y sus herrajes. La suma da exactamente el precio de los muebles.
+          El nombre y el renglón de abajo son los que ve el cliente (en la hoja y en el link): cambialos como
+          quieras, no tocan SketchUp. El precio es el costo real de la obra repartido entre los módulos: cada uno
+          paga las placas según la superficie que usa, más su tapacanto y sus herrajes. La suma da exactamente el
+          precio de los muebles.
         </p>
         <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-madera-500 uppercase mb-1">
-          <span className="col-span-6">Mueble</span>
-          <span className="col-span-1 text-right">Cant.</span>
-          <span className="col-span-2 text-right">Unitario</span>
-          <span className="col-span-3 text-right">Subtotal</span>
+          <span className="col-span-12 sm:col-span-6">Mueble</span>
+          <span className="hidden sm:block sm:col-span-1 text-right">Cant.</span>
+          <span className="hidden sm:block sm:col-span-2 text-right">Unitario</span>
+          <span className="hidden sm:block sm:col-span-3 text-right">Subtotal</span>
         </div>
         <div className="divide-y divide-madera-100">
-          {resultado.items.map((it, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center py-1.5 text-sm">
-              <span className="col-span-6 min-w-0">
-                <span className="block truncate">{it.nombre}</span>
-                <span className="block text-xs text-madera-400 truncate" title={it.detalle}>
-                  {it.medidas || it.detalle}
+          {resultado.items.map((it, i) => {
+            const lebron = archivo.items[i];
+            const cambiado = it.nombre !== lebron.nombre || it.medidas !== lebron.medidas;
+            return (
+              <div key={i} className="grid grid-cols-12 gap-2 items-start py-2 text-sm">
+                <div className="col-span-12 sm:col-span-6 min-w-0 space-y-1">
+                  {editable && muebles[i] ? (
+                    <>
+                      <input
+                        className="input py-1 font-medium"
+                        value={muebles[i].nombre}
+                        placeholder={lebron.nombre}
+                        onChange={(e) => cambiarMueble(i, { nombre: e.target.value })}
+                      />
+                      <input
+                        className="input py-1 text-xs"
+                        value={muebles[i].medidas}
+                        placeholder="Medidas o detalle (si lo dejás vacío, no sale)"
+                        onChange={(e) => cambiarMueble(i, { medidas: e.target.value })}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <span className="block truncate font-medium">{it.nombre}</span>
+                      {it.medidas && <span className="block text-xs text-madera-500 truncate">{it.medidas}</span>}
+                    </>
+                  )}
+                  <p className="text-xs text-madera-400 truncate" title={lebron.detalle}>
+                    {cambiado ? `En LEBRON: ${lebron.nombre}` : lebron.detalle}
+                    {cambiado && editable && (
+                      <button
+                        type="button"
+                        className="underline ml-2 hover:text-madera-700"
+                        onClick={() => cambiarMueble(i, comoLoVeElCliente(lebron, undefined))}
+                      >
+                        volver al de LEBRON
+                      </button>
+                    )}
+                  </p>
+                </div>
+                <span className="col-span-2 sm:col-span-1 text-right sm:pt-1.5">{it.cantidad}</span>
+                <span className="col-span-5 sm:col-span-2 text-right sm:pt-1.5">
+                  {formatMoney(it.precioUnitario, moneda)}
                 </span>
-              </span>
-              <span className="col-span-1 text-right">{it.cantidad}</span>
-              <span className="col-span-2 text-right">{formatMoney(it.precioUnitario, moneda)}</span>
-              <span className="col-span-3 text-right">{formatMoney(it.subtotal, moneda)}</span>
-            </div>
-          ))}
+                <span className="col-span-5 sm:col-span-3 text-right sm:pt-1.5">{formatMoney(it.subtotal, moneda)}</span>
+              </div>
+            );
+          })}
         </div>
         <p className="text-right text-sm font-medium mt-2">Muebles: {formatMoney(resultado.muebles, moneda)}</p>
       </div>

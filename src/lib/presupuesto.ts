@@ -80,7 +80,8 @@ export function leerArchivoLebron(texto: string): ArchivoLebron {
 
 /** "otro": un artículo del proveedor que LEBRON no cuenta (el corte, un
  *  revestimiento, el pegamento...). Queda en la lista con su código, para tener
- *  el precio a mano, pero nunca entra solo en un presupuesto. */
+ *  el precio a mano, pero nunca entra solo en un presupuesto: se agrega a mano
+ *  (ver DatosPresupuesto.agregados) y lleva el coeficiente de las placas. */
 export type TipoPrecio = "placa" | "canto" | "herraje" | "otro";
 
 /** Clave de un precio: el tipo y el nombre tal como sale de LEBRON. */
@@ -115,6 +116,33 @@ export interface DatosPresupuesto {
   /** Descuento del proveedor, en %, sobre placas, tapacantos y herrajes. Los
    *  presupuestos de antes del 16/10/2026 no lo tienen: 0. */
   descuento?: number;
+  // Lo que se cambia a mano en el presupuesto (Leticia, 29/10/2026). Los
+  // presupuestos de antes no lo tienen: todo como vino de LEBRON.
+  /** Por clavePrecio: un material destildado (no se cobra) o con otra cantidad
+   *  que la de LEBRON (la cantidad solo vale para lo que vino de LEBRON). */
+  materiales?: Record<string, CambioMaterial>;
+  /** Artículos de la lista de precios que LEBRON no cuenta (el corte, una
+   *  mesada...), sumados a mano. Su precio está en `precios`, como el resto. */
+  agregados?: ArticuloAgregado[];
+  /** Por posición en archivo.items: el nombre y el renglón de abajo (medidas)
+   *  con que el cliente ve cada mueble, si no son los de LEBRON. */
+  muebles?: Record<string, CambioMueble>;
+}
+
+export interface CambioMaterial {
+  activo?: boolean;
+  cantidad?: number;
+}
+
+export interface ArticuloAgregado {
+  tipo: TipoPrecio;
+  nombre: string;
+  cantidad: number;
+}
+
+export interface CambioMueble {
+  nombre?: string;
+  medidas?: string;
 }
 
 export interface LineaMaterial {
@@ -125,6 +153,18 @@ export interface LineaMaterial {
   precioUnitario: number;
   subtotal: number;
   sinPrecio: boolean;
+  /** Destildado: queda a la vista pero no suma en ningún lado. */
+  activa: boolean;
+  /** La cantidad que trajo LEBRON (null en un artículo agregado a mano). */
+  cantidadLebron: number | null;
+  agregada: boolean;
+}
+
+/** La unidad de cada tipo de material, como se muestra en la lista. */
+export function unidadDe(tipo: TipoPrecio, cantidad: number) {
+  if (tipo === "placa") return cantidad === 1 ? "placa" : "placas";
+  if (tipo === "canto") return "m";
+  return "u.";
 }
 
 export interface PrecioDeItem {
@@ -194,28 +234,42 @@ export function calcularPresupuesto(
   coefHerrajes: number
 ): ResultadoPresupuesto {
   const { archivo, precios } = datos;
-  const precioDe = (tipo: TipoPrecio, nombre: string) => precios[clavePrecio(tipo, nombre)];
+  const cambios = datos.materiales ?? {};
 
   const lineas: LineaMaterial[] = [];
-  const agregar = (tipo: TipoPrecio, nombre: string, cantidad: number, unidad: string) => {
-    const precio = precioDe(tipo, nombre);
+  const agregar = (tipo: TipoPrecio, nombre: string, cantidadLebron: number | null, cantidadAgregada = 0) => {
+    const clave = clavePrecio(tipo, nombre);
+    const cambio = cambios[clave] ?? {};
+    const cantidad =
+      cantidadLebron === null
+        ? cantidadAgregada
+        : typeof cambio.cantidad === "number" && cambio.cantidad >= 0
+        ? cambio.cantidad
+        : cantidadLebron;
+    const precio = precios[clave];
     const precioUnitario = typeof precio === "number" && precio > 0 ? precio : 0;
+    const activa = cambio.activo !== false;
     lineas.push({
       tipo,
       nombre,
       cantidad,
-      unidad,
+      unidad: unidadDe(tipo, cantidad),
       precioUnitario,
       subtotal: cantidad * precioUnitario,
-      sinPrecio: precioUnitario === 0,
+      sinPrecio: activa && cantidad > 0 && precioUnitario === 0,
+      activa,
+      cantidadLebron,
+      agregada: cantidadLebron === null,
     });
   };
-  archivo.placas.forEach((p) => agregar("placa", p.material, p.placas, p.placas === 1 ? "placa" : "placas"));
-  archivo.canto.forEach((c) => agregar("canto", c.material, c.metros, "m"));
-  archivo.herrajes.forEach((h) => agregar("herraje", h.nombre, h.cantidad, "u."));
+  archivo.placas.forEach((p) => agregar("placa", p.material, p.placas));
+  archivo.canto.forEach((c) => agregar("canto", c.material, c.metros));
+  archivo.herrajes.forEach((h) => agregar("herraje", h.nombre, h.cantidad));
+  (datos.agregados ?? []).forEach((a) => agregar(a.tipo, a.nombre, null, a.cantidad));
 
+  // Lo destildado no suma: ni en el costo, ni en el precio de cada módulo.
   const sumar = (filtro: (l: LineaMaterial) => boolean) =>
-    lineas.filter(filtro).reduce((a, l) => a + l.subtotal, 0);
+    lineas.filter((l) => l.activa && filtro(l)).reduce((a, l) => a + l.subtotal, 0);
   const descuento = Math.min(Math.max(datos.descuento ?? 0, 0), 100);
   const neto = 1 - descuento / 100;
   const listaPlacasCanto = sumar((l) => l.tipo !== "herraje");
@@ -239,7 +293,8 @@ export function calcularPresupuesto(
   const placasCanto = items.map(() => 0);
   const herrajes = items.map(() => 0);
   for (const l of lineas) {
-    if (l.subtotal === 0) continue;
+    // Un artículo agregado no está en ningún módulo: se reparte por superficie.
+    if (!l.activa || l.subtotal === 0) continue;
     const pesos = items.map((it) => {
       const tabla = l.tipo === "placa" ? it.placas_mm2 : l.tipo === "canto" ? it.canto_mm : it.herrajes;
       return (tabla[l.nombre] ?? 0) * it.cantidad;
@@ -270,9 +325,8 @@ export function calcularPresupuesto(
     total: muebles + extrasSeparados,
     faltanPrecios: lineas.filter((l) => l.sinPrecio).length,
     items: items.map((it, i) => ({
-      nombre: it.nombre,
+      ...comoLoVeElCliente(it, datos.muebles?.[i]),
       detalle: it.detalle,
-      medidas: it.medidas,
       cantidad: it.cantidad,
       costoPlacasCanto: placasCanto[i],
       costoHerrajes: herrajes[i],
@@ -282,11 +336,23 @@ export function calcularPresupuesto(
   };
 }
 
-/** Los precios de la lista para todo lo que trae el archivo (lo que no está
- *  en la lista queda sin precio, para cargarlo en el presupuesto). */
+/** El nombre y el renglón de abajo de un mueble en la hoja del cliente: lo
+ *  escrito a mano en el presupuesto o, si no, lo de LEBRON. Un nombre vacío
+ *  vuelve al de LEBRON; las medidas vacías no se muestran. */
+export function comoLoVeElCliente(it: ItemLebron, cambio: CambioMueble | undefined) {
+  return {
+    nombre: cambio?.nombre?.trim() || it.nombre,
+    medidas: cambio?.medidas !== undefined ? cambio.medidas.trim() : it.medidas,
+  };
+}
+
+/** Los precios de la lista para todo lo que trae el archivo, más los
+ *  artículos agregados a mano (lo que no está en la lista queda sin precio,
+ *  para cargarlo en el presupuesto). */
 export function preciosParaArchivo(
   archivo: ArchivoLebron,
-  lista: { tipo: TipoPrecio; nombre: string; precio: number }[]
+  lista: { tipo: TipoPrecio; nombre: string; precio: number }[],
+  agregados: ArticuloAgregado[] = []
 ): Record<string, number> {
   const porClave = new Map(lista.map((p) => [clavePrecio(p.tipo, p.nombre), p.precio]));
   const precios: Record<string, number> = {};
@@ -297,5 +363,6 @@ export function preciosParaArchivo(
   archivo.placas.forEach((p) => tomar("placa", p.material));
   archivo.canto.forEach((c) => tomar("canto", c.material));
   archivo.herrajes.forEach((h) => tomar("herraje", h.nombre));
+  agregados.forEach((a) => tomar(a.tipo, a.nombre));
   return precios;
 }

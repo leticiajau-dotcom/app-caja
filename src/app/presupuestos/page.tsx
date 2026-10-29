@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatMoney } from "@/lib/format";
+import { formatDiaYHora, formatMoney } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import { leerArchivoLebron, type ArchivoLebron } from "@/lib/presupuesto";
 import { ETIQUETA_ESTADO } from "@/lib/presupuestoEtiquetas";
@@ -177,6 +177,7 @@ export default function PresupuestosPage() {
                     <p className="text-xs text-madera-500">
                       {new Date(p.creadoEn).toLocaleDateString("es-AR")} · {p.muebles}{" "}
                       {p.muebles === 1 ? "mueble" : "muebles"}
+                      {p.vistoUltimo && <> · el cliente lo vio el {formatDiaYHora(p.vistoUltimo)}</>}
                     </p>
                   </div>
                   <div className="text-right shrink-0">

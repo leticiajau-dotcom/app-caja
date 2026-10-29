@@ -4,6 +4,7 @@ import {
   TABS,
   agregarFila,
   agregarFilas,
+  actualizarCeldasPorId,
   actualizarFilaPorId,
   actualizarFilasPorId,
   asegurarPestaña,
@@ -43,6 +44,9 @@ import {
   clavePrecio,
   preciosParaArchivo,
   type ArchivoLebron,
+  type ArticuloAgregado,
+  type CambioMaterial,
+  type CambioMueble,
   type DatosPresupuesto,
   type Extra,
   type TipoPrecio,
@@ -1193,6 +1197,9 @@ function rowToPresupuesto(r: Record<string, string>): Presupuesto {
     actualizadoEn: r.actualizadoEn,
     tokenPublico: r.tokenPublico || null,
     modeloId: r.modeloId || null,
+    vistoPrimero: r.vistoPrimero || null,
+    vistoUltimo: r.vistoUltimo || null,
+    vistas: toNum(r.vistas),
   };
 }
 
@@ -1214,6 +1221,9 @@ function filaPresupuesto(p: Presupuesto): (string | number)[] {
     p.actualizadoEn,
     p.tokenPublico ?? "",
     p.modeloId ?? "",
+    p.vistoPrimero ?? "",
+    p.vistoUltimo ?? "",
+    p.vistas,
   ];
 }
 
@@ -1254,6 +1264,18 @@ export async function guardarModeloPresupuesto(id: string, datos: Buffer): Promi
   p.actualizadoEn = new Date().toISOString();
   await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
   return p;
+}
+
+/** El cliente abrió el link: se anota cuándo. Solo esas columnas de la fila,
+ *  así no pisa un cambio del presupuesto que se esté guardando al mismo tiempo. */
+export async function registrarVistaPresupuesto(p: Presupuesto): Promise<void> {
+  const ahora = new Date().toISOString();
+  await asegurarPestaña(TABS.PRESUPUESTOS);
+  await actualizarCeldasPorId(TABS.PRESUPUESTOS, p.id, "vistoPrimero", [
+    p.vistoPrimero ?? ahora,
+    ahora,
+    p.vistas + 1,
+  ]);
 }
 
 const CLAVE_COEF_PLACAS = "presupuestoCoefPlacas";
@@ -1351,6 +1373,9 @@ export async function crearPresupuesto(datos: {
     actualizadoEn: ahora,
     tokenPublico: null,
     modeloId: null,
+    vistoPrimero: null,
+    vistoUltimo: null,
+    vistas: 0,
   };
   await agregarFila(TABS.PRESUPUESTOS, filaPresupuesto(presupuesto));
   return presupuesto;
@@ -1370,6 +1395,12 @@ export async function actualizarPresupuesto(
     extras?: Extra[];
     /** Descuento del proveedor, en %. */
     descuento?: number;
+    /** Materiales destildados o con otra cantidad, por clavePrecio. */
+    materiales?: Record<string, CambioMaterial>;
+    /** Artículos de la lista sumados a mano (la lista entera, como queda). */
+    agregados?: ArticuloAgregado[];
+    /** Nombre y medidas de cada mueble para el cliente, por posición. */
+    muebles?: Record<string, CambioMueble>;
     estado?: "borrador" | "descartado";
   },
   usuarioId: string
@@ -1404,8 +1435,61 @@ export async function actualizarPresupuesto(
     }
     p.datos.descuento = cambios.descuento;
   }
+  if (cambios.materiales !== undefined) {
+    const limpios: Record<string, CambioMaterial> = {};
+    for (const [clave, c] of Object.entries(cambios.materiales)) {
+      const cambio: CambioMaterial = {};
+      if (c.activo === false) cambio.activo = false;
+      if (typeof c.cantidad === "number") {
+        if (!(c.cantidad >= 0)) throw new Error("Las cantidades no pueden ser negativas.");
+        cambio.cantidad = c.cantidad;
+      }
+      if (Object.keys(cambio).length > 0) limpios[clave] = cambio;
+    }
+    p.datos.materiales = limpios;
+  }
+  if (cambios.agregados !== undefined) {
+    const { archivo } = p.datos;
+    const yaEstan = new Set([
+      ...archivo.placas.map((x) => clavePrecio("placa", x.material)),
+      ...archivo.canto.map((x) => clavePrecio("canto", x.material)),
+      ...archivo.herrajes.map((x) => clavePrecio("herraje", x.nombre)),
+    ]);
+    const agregados: ArticuloAgregado[] = [];
+    for (const a of cambios.agregados) {
+      const nombre = a.nombre.trim();
+      if (!nombre) continue;
+      const clave = clavePrecio(a.tipo, nombre);
+      if (yaEstan.has(clave)) {
+        throw new Error(`"${nombre}" ya está en el presupuesto: cambiá la cantidad en su renglón.`);
+      }
+      if (!(a.cantidad >= 0)) throw new Error("Las cantidades no pueden ser negativas.");
+      yaEstan.add(clave);
+      agregados.push({ tipo: a.tipo, nombre, cantidad: a.cantidad });
+    }
+    // Lo recién agregado toma el precio de la lista (como lo que trae LEBRON).
+    const sinPrecio = agregados.filter((a) => p.datos.precios[clavePrecio(a.tipo, a.nombre)] === undefined);
+    if (sinPrecio.length > 0) {
+      const deLaLista = preciosParaArchivo({ ...archivo, placas: [], canto: [], herrajes: [] }, await listarPrecios(), sinPrecio);
+      Object.assign(p.datos.precios, deLaLista);
+    }
+    p.datos.agregados = agregados;
+  }
+  if (cambios.muebles !== undefined) {
+    const limpios: Record<string, CambioMueble> = {};
+    for (const [i, c] of Object.entries(cambios.muebles)) {
+      const it = p.datos.archivo.items[Number(i)];
+      if (!it) continue;
+      const cambio: CambioMueble = {};
+      const nombre = c.nombre?.trim();
+      if (nombre && nombre !== it.nombre) cambio.nombre = nombre;
+      if (c.medidas !== undefined && c.medidas.trim() !== it.medidas) cambio.medidas = c.medidas.trim();
+      if (Object.keys(cambio).length > 0) limpios[i] = cambio;
+    }
+    p.datos.muebles = limpios;
+  }
   if (cambios.tomarPreciosDeLaLista) {
-    p.datos.precios = preciosParaArchivo(p.datos.archivo, await listarPrecios());
+    p.datos.precios = preciosParaArchivo(p.datos.archivo, await listarPrecios(), p.datos.agregados);
   }
   if (cambios.precios && cambios.precios.length > 0) {
     for (const c of cambios.precios) {

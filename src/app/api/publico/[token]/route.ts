@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { manejarError } from "@/lib/guards";
 import { armarHojaCliente } from "@/lib/hojaCliente";
+import { obtenerSesion } from "@/lib/internalSession";
 import {
   listarClientes,
   obtenerConfiguracion,
   obtenerDefaultsPresupuesto,
   obtenerPresupuestoPorToken,
+  registrarVistaPresupuesto,
 } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +24,11 @@ export async function GET(_req: Request, { params }: { params: { token: string }
       obtenerConfiguracion(),
     ]);
     const cliente = clientes.find((c) => c.id === p.clienteId) ?? null;
+    // Se anota que el cliente lo abrió. Si lo abre alguien con sesión en la app
+    // ("Verlo como el cliente"), no cuenta. Si no se puede anotar, igual se muestra.
+    if (!(await obtenerSesion())) {
+      await registrarVistaPresupuesto(p).catch((e) => console.error("No se pudo anotar la vista:", e));
+    }
     return NextResponse.json({
       hoja: armarHojaCliente(p, cliente, defaults, config),
       modeloUrl: p.modeloId ? `/api/publico/${params.token}/modelo?v=${p.modeloId}` : null,
