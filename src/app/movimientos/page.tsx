@@ -7,12 +7,14 @@ import RectificarModal from "@/components/RectificarModal";
 import {
   puedeRegistrarRetiros,
   puedeVerClientes,
+  puedeVerEmpleados,
   puedeVerResumenGeneral,
   soloPuedeRegistrarEgresos,
 } from "@/lib/permisos";
 import type {
   Cliente,
   Cuenta,
+  Empleado,
   Movimiento,
   Proyecto,
   Rol,
@@ -166,6 +168,9 @@ export default function MovimientosPage() {
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [usuariosRetiro, setUsuariosRetiro] = useState<string[]>([]);
+  const [esPagoSueldo, setEsPagoSueldo] = useState(false);
+  const [empleadoSueldoId, setEmpleadoSueldoId] = useState("");
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
 
   async function cargar() {
     setCargando(true);
@@ -201,6 +206,12 @@ export default function MovimientosPage() {
       const dcli = await rcli.json();
       setClientes(dcli.clientes ?? []);
       setProyectos(dcli.proyectos ?? []);
+    }
+    // Para poder imputar un egreso como pago de sueldo.
+    if (sesionActual && puedeVerEmpleados(sesionActual.rol)) {
+      const remp = await fetch("/api/employees");
+      const demp = await remp.json();
+      setEmpleados((demp.empleados ?? []).filter((e: Empleado) => e.activo));
     }
     setCargando(false);
   }
@@ -359,6 +370,10 @@ export default function MovimientosPage() {
     } else {
       setUsuariosRetiro([]);
     }
+    if (tipo !== "egreso") {
+      setEsPagoSueldo(false);
+      setEmpleadoSueldoId("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentaId, tipo]);
 
@@ -367,6 +382,10 @@ export default function MovimientosPage() {
     setError("");
     if (tipo === "retiro" && usuariosRetiro.length === 0) {
       setError("Seleccioná al menos un usuario para el retiro.");
+      return;
+    }
+    if (tipo === "egreso" && esPagoSueldo && !empleadoSueldoId) {
+      setError("Elegí a qué empleado corresponde este pago de sueldo.");
       return;
     }
     setGuardando(true);
@@ -380,9 +399,10 @@ export default function MovimientosPage() {
           cuentaId,
           cuentaDestinoId: tipo === "transferencia" ? cuentaDestinoId : null,
           monto,
-          categoria,
+          categoria: tipo === "egreso" && esPagoSueldo ? "Sueldo" : categoria,
           descripcion,
           usuarioRetiroIds: tipo === "retiro" ? usuariosRetiro : undefined,
+          empleadoId: tipo === "egreso" && esPagoSueldo ? empleadoSueldoId : null,
         }),
       });
       const data = await res.json();
@@ -391,6 +411,8 @@ export default function MovimientosPage() {
       setCategoria(tipo === "retiro" ? "Retiro" : "");
       setDescripcion("");
       setUsuariosRetiro([]);
+      setEsPagoSueldo(false);
+      setEmpleadoSueldoId("");
       await cargar();
     } catch (e: any) {
       setError(e.message ?? "Error inesperado.");
@@ -544,6 +566,41 @@ export default function MovimientosPage() {
               </p>
             </div>
           )}
+          {tipo === "egreso" &&
+            sesion &&
+            puedeVerEmpleados(sesion.rol) &&
+            empleados.length > 0 && (
+              <div className="sm:col-span-2">
+                <label className="flex items-center gap-2 text-sm text-madera-700">
+                  <input
+                    type="checkbox"
+                    checked={esPagoSueldo}
+                    onChange={(e) => {
+                      setEsPagoSueldo(e.target.checked);
+                      if (!e.target.checked) setEmpleadoSueldoId("");
+                    }}
+                  />
+                  Es un pago de sueldo
+                </label>
+                {esPagoSueldo && (
+                  <select
+                    className="input mt-2"
+                    value={empleadoSueldoId}
+                    onChange={(e) => setEmpleadoSueldoId(e.target.value)}
+                    required
+                  >
+                    <option value="" disabled>
+                      Elegí el empleado
+                    </option>
+                    {empleados.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.nombre}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           <div>
             <label className="label">Monto</label>
             <MoneyInput value={monto} onChange={setMonto} required />
@@ -552,6 +609,8 @@ export default function MovimientosPage() {
             <label className="label">Categoría</label>
             {tipo === "retiro" ? (
               <input className="input" value="Retiro" disabled />
+            ) : tipo === "egreso" && esPagoSueldo ? (
+              <input className="input" value="Sueldo" disabled />
             ) : (
               <input
                 className="input"

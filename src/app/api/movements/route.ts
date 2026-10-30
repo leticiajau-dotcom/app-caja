@@ -11,6 +11,7 @@ import {
 } from "@/lib/repo";
 import {
   puedeRegistrarRetiros,
+  puedeVerEmpleados,
   soloPuedeRegistrarEgresos,
   soloVeSusPropiosMovimientos,
 } from "@/lib/permisos";
@@ -29,6 +30,8 @@ const CrearMovimientoSchema = z.object({
   // usuario seleccionado retira el monto completo (no se reparte entre
   // todos) — se carga un movimiento por cada uno.
   usuarioRetiroIds: z.array(z.string()).optional(),
+  // Solo para tipo "egreso": si es un pago de sueldo, a qué empleado.
+  empleadoId: z.string().nullable().optional(),
 });
 
 export async function GET() {
@@ -66,6 +69,10 @@ export async function POST(req: Request) {
 
     if (soloPuedeRegistrarEgresos(sesion.rol) && datos.tipo !== "egreso") {
       throw new ApiError("Como empleado solo podés registrar egresos.", 403);
+    }
+
+    if (datos.empleadoId && !puedeVerEmpleados(sesion.rol)) {
+      throw new ApiError("No tenés acceso a imputar pagos de sueldo.", 403);
     }
 
     if (!(await usuarioPuedeOperarCuenta(sesion, datos.cuentaId))) {

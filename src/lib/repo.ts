@@ -22,6 +22,7 @@ import type {
   Configuracion,
   Cuenta,
   DefaultsPresupuesto,
+  Empleado,
   EstadoPresupuesto,
   Modificacion,
   Movimiento,
@@ -395,6 +396,7 @@ function rowToMovimiento(r: Record<string, string>): Movimiento {
     esAperturaSaldo: toBool(r.esAperturaSaldo),
     usuarioRetiroId: r.usuarioRetiroId || null,
     proyectoImputadoId: r.proyectoImputadoId || null,
+    empleadoId: r.empleadoId || null,
   };
 }
 
@@ -418,6 +420,7 @@ function movimientoAFila(m: Movimiento): (string | number)[] {
     String(m.esAperturaSaldo),
     m.usuarioRetiroId ?? "",
     m.proyectoImputadoId ?? "",
+    m.empleadoId ?? "",
   ];
 }
 
@@ -459,9 +462,14 @@ export async function crearMovimiento(datos: {
   esAperturaSaldo?: boolean;
   /** Solo para tipo "retiro": el usuario que retiró este importe puntual. */
   usuarioRetiroId?: string | null;
+  /** Solo para egresos: si este egreso es un pago de sueldo, a qué empleado. */
+  empleadoId?: string | null;
 }): Promise<Movimiento> {
   if (datos.monto <= 0) {
     throw new Error("El monto debe ser mayor a cero.");
+  }
+  if (datos.empleadoId && datos.tipo !== "egreso") {
+    throw new Error("Solo un egreso se puede imputar como pago de sueldo.");
   }
   if (datos.tipo === "transferencia") {
     if (!datos.cuentaDestinoId) {
@@ -480,6 +488,12 @@ export async function crearMovimiento(datos: {
       throw new Error(
         "Una transferencia solo puede ser entre cuentas de la misma moneda."
       );
+    }
+  }
+  if (datos.empleadoId) {
+    const empleados = await listarEmpleados();
+    if (!empleados.some((e) => e.id === datos.empleadoId)) {
+      throw new Error("Empleado no encontrado.");
     }
   }
   const movimiento: Movimiento = {
@@ -501,6 +515,7 @@ export async function crearMovimiento(datos: {
     esAperturaSaldo: datos.esAperturaSaldo ?? false,
     usuarioRetiroId: datos.usuarioRetiroId ?? null,
     proyectoImputadoId: null,
+    empleadoId: datos.empleadoId ?? null,
   };
   const tabDestino = await obtenerPestañaMovimientosParaEscribir();
   await agregarFila(tabDestino, movimientoAFila(movimiento));
@@ -1610,4 +1625,147 @@ export async function aceptarPresupuesto(
   p.actualizadoEn = new Date().toISOString();
   await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
   return { presupuesto: p, proyecto };
+}
+
+// ---------------------------------------------------------------------------
+// Empleados (para imputar egresos como pago de sueldo y llevar la cuenta
+// de lo pagado mes a mes, aunque la persona no use la app)
+// ---------------------------------------------------------------------------
+
+function rowToEmpleado(r: Record<string, string>): Empleado {
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    activo: toBool(r.activo),
+    creadoEn: r.creadoEn,
+  };
+}
+
+function filaEmpleado(e: Empleado): (string | number)[] {
+  return [e.id, e.nombre, String(e.activo), e.creadoEn];
+}
+
+export async function listarEmpleados(): Promise<Empleado[]> {
+  const rows = await leerFilas<Record<string, string>>(TABS.EMPLEADOS);
+  return rows.map(rowToEmpleado);
+}
+
+export async function crearEmpleado(nombre: string): Promise<Empleado> {
+  const nombreLimpio = nombre.trim();
+  if (!nombreLimpio) throw new Error("Ingresá el nombre del empleado.");
+
+  const empleados = await listarEmpleados();
+  if (
+    empleados.some(
+      (e) => e.nombre.trim().toLowerCase() === nombreLimpio.toLowerCase()
+    )
+  ) {
+    throw new Error("Ya existe un empleado con ese nombre.");
+  }
+
+  const empleado: Empleado = {
+    id: randomUUID(),
+    nombre: nombreLimpio,
+    activo: true,
+    creadoEn: new Date().toISOString(),
+  };
+  await agregarFila(TABS.EMPLEADOS, filaEmpleado(empleado));
+  return empleado;
+}
+
+export async function actualizarEmpleado(
+  id: string,
+  cambios: Partial<Pick<Empleado, "nombre" | "activo">>
+): Promise<Empleado> {
+  const empleados = await listarEmpleados();
+  const actual = empleados.find((e) => e.id === id);
+  if (!actual) throw new Error("Empleado no encontrado.");
+  const actualizado: Empleado = {
+    ...actual,
+    nombre: cambios.nombre?.trim() || actual.nombre,
+    activo: cambios.activo ?? actual.activo,
+  };
+  await actualizarFilaPorId(TABS.EMPLEADOS, id, filaEmpleado(actualizado));
+  return actualizado;
+}
+
+/** Total pagado a cada empleado, en total y desglosado por mes (el mes se
+ *  toma de la fecha del movimiento, no de cuándo se cargó), a partir de los
+ *  egresos imputados como sueldo. Los egresos anulados no se cuentan. */
+export interface PagoSueldo {
+  movimientoId: string;
+  fecha: string;
+  monto: number;
+  moneda: string;
+  categoria: string;
+  descripcion: string;
+  usuarioId: string;
+}
+
+export interface ResumenSueldosEmpleado {
+  empleadoId: string;
+  /** Total pagado por moneda (normalmente una sola, pero por si paga algún
+   *  sueldo desde una cuenta en otra moneda). */
+  totalPorMoneda: Record<string, number>;
+  /** Clave "YYYY-MM", ordenado del mes más reciente al más viejo. */
+  porMes: {
+    mes: string;
+    totalPorMoneda: Record<string, number>;
+    pagos: PagoSueldo[];
+  }[];
+}
+
+function sumarPorMoneda(pagos: PagoSueldo[]): Record<string, number> {
+  const totales: Record<string, number> = {};
+  for (const pago of pagos) {
+    totales[pago.moneda] = (totales[pago.moneda] ?? 0) + pago.monto;
+  }
+  return totales;
+}
+
+export function calcularSueldosPorEmpleado(
+  empleados: Empleado[],
+  movimientos: Movimiento[],
+  cuentas: Cuenta[]
+): ResumenSueldosEmpleado[] {
+  const cuentasPorId = new Map(cuentas.map((c) => [c.id, c]));
+  const pagosPorEmpleado = new Map<string, PagoSueldo[]>();
+  for (const m of movimientos) {
+    if (!m.empleadoId || m.anulado || m.tipo !== "egreso") continue;
+    if (!pagosPorEmpleado.has(m.empleadoId)) pagosPorEmpleado.set(m.empleadoId, []);
+    pagosPorEmpleado.get(m.empleadoId)!.push({
+      movimientoId: m.id,
+      fecha: m.fecha,
+      monto: m.monto,
+      moneda: cuentasPorId.get(m.cuentaId)?.moneda ?? "ARS",
+      categoria: m.categoria,
+      descripcion: m.descripcion,
+      usuarioId: m.usuarioId,
+    });
+  }
+
+  return empleados.map((empleado) => {
+    const pagos = (pagosPorEmpleado.get(empleado.id) ?? []).sort((a, b) =>
+      a.fecha < b.fecha ? 1 : -1
+    );
+    const porMesMap = new Map<string, PagoSueldo[]>();
+    for (const pago of pagos) {
+      const mes = pago.fecha.slice(0, 7); // "YYYY-MM"
+      if (!porMesMap.has(mes)) porMesMap.set(mes, []);
+      porMesMap.get(mes)!.push(pago);
+    }
+    const porMes = [...porMesMap.entries()]
+      .map(([mes, pagosDelMes]) => ({
+        mes,
+        totalPorMoneda: sumarPorMoneda(pagosDelMes),
+        pagos: pagosDelMes,
+      }))
+      .sort((a, b) => (a.mes < b.mes ? 1 : -1));
+
+    return {
+      empleadoId: empleado.id,
+      totalPorMoneda: sumarPorMoneda(pagos),
+      porMes,
+    };
+  });
 }

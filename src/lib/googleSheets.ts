@@ -75,6 +75,7 @@ export const TABS = {
   PAGOS: "Pagos",
   PRECIOS: "Precios",
   PRESUPUESTOS: "Presupuestos",
+  EMPLEADOS: "Empleados",
 } as const;
 
 export const HEADERS = {
@@ -118,6 +119,7 @@ export const HEADERS = {
     "esAperturaSaldo",
     "usuarioRetiroId",
     "proyectoImputadoId",
+    "empleadoId",
   ],
   [TABS.CONFIGURACION]: ["clave", "valor"],
   [TABS.CLIENTES]: ["id", "nombre", "creadoEn"],
@@ -183,6 +185,7 @@ export const HEADERS = {
     "vistoUltimo",
     "vistas",
   ],
+  [TABS.EMPLEADOS]: ["id", "nombre", "activo", "creadoEn"],
 } as const;
 
 /** Cuántas filas de datos toleramos en una pestaña de Movimientos antes de

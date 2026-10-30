@@ -74,6 +74,10 @@ export interface Movimiento {
    *  socio pueden marcarlo (igual que el resto de "Clientes"); para el
    *  empleado la lista de Movimientos sigue sin este marcador. */
   proyectoImputadoId: string | null;
+
+  /** Solo para egresos: si este egreso es un pago de sueldo, a qué
+   *  empleado corresponde. Null si no es un pago de sueldo. */
+  empleadoId: string | null;
 }
 
 export interface SaldoCuenta {
@@ -124,6 +128,19 @@ export interface Cliente {
   id: string;
   /** Único entre todos los clientes (no distingue mayúsculas/minúsculas). */
   nombre: string;
+  creadoEn: string;
+}
+
+/** Una persona a la que se le paga sueldo, para poder imputarle egresos y
+ *  llevar la cuenta de lo pagado mes a mes — no necesita usuario de la app
+ *  (ej: José, que no la usa). Si la persona sí tiene Usuario (ej: Rodrigo),
+ *  este registro es independiente del suyo: no hay vínculo formal entre
+ *  ambos, son simplemente el mismo nombre en dos listas distintas. */
+export interface Empleado {
+  id: string;
+  /** Único entre todos los empleados (no distingue mayúsculas/minúsculas). */
+  nombre: string;
+  activo: boolean;
   creadoEn: string;
 }
 

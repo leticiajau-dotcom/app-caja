@@ -48,3 +48,9 @@ export function puedeRegistrarRetiros(rol: Rol): boolean {
 export function puedeVerPresupuestos(rol: Rol): boolean {
   return rol === "admin" || rol === "socio";
 }
+
+/** Empleados (sueldos): admin y socio, igual que Clientes. El empleado no
+ *  ve esta pantalla ni puede imputar egresos como sueldo. */
+export function puedeVerEmpleados(rol: Rol): boolean {
+  return rol !== "empleado";
+}

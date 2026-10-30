@@ -9,6 +9,7 @@ import MobileBottomNav from "./MobileBottomNav";
 import {
   puedeVerClientes,
   puedeVerCuentas,
+  puedeVerEmpleados,
   puedeVerPresupuestos,
   puedeVerUsuarios,
 } from "@/lib/permisos";
@@ -20,6 +21,7 @@ const LINKS: { href: string; label: string; visible: (rol: Rol) => boolean }[] =
   { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas },
   { href: "/clientes", label: "Clientes", visible: puedeVerClientes },
   { href: "/presupuestos", label: "Presupuestos", visible: puedeVerPresupuestos },
+  { href: "/empleados", label: "Empleados", visible: puedeVerEmpleados },
   { href: "/usuarios", label: "Usuarios", visible: puedeVerUsuarios },
 ];
 

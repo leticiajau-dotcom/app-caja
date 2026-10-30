@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import type { Rol, SesionInterna } from "@/lib/types";
-import { puedeVerClientes, puedeVerCuentas, puedeVerUsuarios } from "@/lib/permisos";
+import {
+  puedeVerClientes,
+  puedeVerCuentas,
+  puedeVerEmpleados,
+  puedeVerPresupuestos,
+  puedeVerUsuarios,
+} from "@/lib/permisos";
 
 interface Tab {
   href: string;
@@ -12,12 +18,17 @@ interface Tab {
   // diseño de referencia (cuadrado redondeado / círculo / cuadrado chico /
   // "gota").
   forma: string;
+  // Para "Más": queda resaltada también al entrar a cualquiera de las
+  // pantallas que agrupa (Cuentas, Usuarios, Empleados, Presupuestos).
+  activaCon?: (pathname: string) => boolean;
 }
 
+// Las 3 pantallas de uso más frecuente van sueltas; el resto (Cuentas,
+// Usuarios, Empleados, Presupuestos) se agrupa bajo "Más" para no saturar
+// la barra inferior en celular (Leticia, 30/10/2026).
 const TABS: Tab[] = [
   { href: "/dashboard", label: "Resumen", visible: () => true, forma: "8px" },
   { href: "/movimientos", label: "Movimientos", visible: () => true, forma: "50%" },
-  { href: "/cuentas", label: "Cuentas", visible: puedeVerCuentas, forma: "4px" },
   {
     href: "/clientes",
     label: "Clientes",
@@ -25,12 +36,28 @@ const TABS: Tab[] = [
     forma: "0 50% 50% 50%",
   },
   {
-    href: "/usuarios",
-    label: "Usuarios",
-    visible: puedeVerUsuarios,
-    forma: "50% 50% 50% 0",
+    href: "/mas",
+    label: "Más",
+    visible: () => true,
+    forma: "0",
+    activaCon: (p) =>
+      p.startsWith("/cuentas") ||
+      p.startsWith("/usuarios") ||
+      p.startsWith("/empleados") ||
+      p.startsWith("/presupuestos"),
   },
 ];
+
+/** Si ningún link de "Más" es visible para este rol, no tiene sentido
+ *  mostrar la pestaña (por ahora solo pasa con el rol "empleado"). */
+function hayAlgoEnMas(rol: Rol) {
+  return (
+    puedeVerCuentas(rol) ||
+    puedeVerUsuarios(rol) ||
+    puedeVerEmpleados(rol) ||
+    puedeVerPresupuestos(rol)
+  );
+}
 
 export default function MobileBottomNav({
   sesion,
@@ -39,7 +66,9 @@ export default function MobileBottomNav({
   sesion: SesionInterna;
   pathname: string;
 }) {
-  const tabs = TABS.filter((t) => t.visible(sesion.rol));
+  const tabs = TABS.filter(
+    (t) => t.visible(sesion.rol) && (t.href !== "/mas" || hayAlgoEnMas(sesion.rol))
+  );
 
   return (
     <nav
@@ -47,7 +76,9 @@ export default function MobileBottomNav({
       style={{ boxShadow: "0 -2px 12px rgba(30,25,15,0.06)" }}
     >
       {tabs.map((t) => {
-        const activo = pathname === t.href;
+        const activo = t.activaCon
+          ? pathname === t.href || t.activaCon(pathname)
+          : pathname === t.href;
         const color = activo ? "oklch(55% 0.135 175)" : "oklch(52% 0.03 250)";
         return (
           <Link
