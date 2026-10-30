@@ -595,6 +595,44 @@ export function calcularSaldosPorCuenta(
   }));
 }
 
+/** Saldo de la cuenta de cada movimiento, calculado justo después de que ese
+ *  movimiento se aplicó (recorriendo TODO el historial en orden
+ *  cronológico, sin importar quién lo cargó). Sirve para que un empleado
+ *  -que en "Movimientos" solo ve los que él mismo cargó- pueda igual
+ *  controlar el saldo real de la cuenta de la que es responsable, sin que
+ *  se le muestren los movimientos de otros usuarios: acá se calcula sobre
+ *  el historial completo, y después cada llamador filtra qué movimientos
+ *  le puede mostrar a quién (ver /api/movements). */
+export function calcularSaldoCuentaPorMovimiento(
+  cuentas: Cuenta[],
+  movimientos: Movimiento[]
+): Map<string, number> {
+  const saldoPorCuenta = new Map<string, number>();
+  for (const c of cuentas) saldoPorCuenta.set(c.id, c.saldoInicial);
+
+  const cronologico = [...movimientos].sort((a, b) =>
+    a.creadoEn < b.creadoEn ? -1 : 1
+  );
+  const resultado = new Map<string, number>();
+  for (const m of cronologico) {
+    if (!m.anulado && !m.esAperturaSaldo) {
+      if (m.tipo === "ingreso") {
+        saldoPorCuenta.set(m.cuentaId, (saldoPorCuenta.get(m.cuentaId) ?? 0) + m.monto);
+      } else if (m.tipo === "egreso" || m.tipo === "retiro") {
+        saldoPorCuenta.set(m.cuentaId, (saldoPorCuenta.get(m.cuentaId) ?? 0) - m.monto);
+      } else if (m.tipo === "transferencia" && m.cuentaDestinoId) {
+        saldoPorCuenta.set(m.cuentaId, (saldoPorCuenta.get(m.cuentaId) ?? 0) - m.monto);
+        saldoPorCuenta.set(
+          m.cuentaDestinoId,
+          (saldoPorCuenta.get(m.cuentaDestinoId) ?? 0) + m.monto
+        );
+      }
+    }
+    resultado.set(m.id, saldoPorCuenta.get(m.cuentaId) ?? 0);
+  }
+  return resultado;
+}
+
 const ETIQUETA_SIN_RESPONSABLE = "Sin responsable asignado";
 const CLAVE_SIN_RESPONSABLE = "__sin_responsable__";
 

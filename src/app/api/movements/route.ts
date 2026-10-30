@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import {
+  calcularSaldoCuentaPorMovimiento,
   crearMovimiento,
+  listarCuentas,
   listarMovimientos,
   listarUsuarios,
   usuarioPuedeOperarCuenta,
@@ -32,13 +34,25 @@ const CrearMovimientoSchema = z.object({
 export async function GET() {
   try {
     const sesion = await requerirSesion();
-    const movimientos = await listarMovimientos();
+    const [movimientos, cuentas] = await Promise.all([
+      listarMovimientos(),
+      listarCuentas(),
+    ]);
     // El rol "empleado" (acotado) solo ve los movimientos que él mismo
     // cargó, nunca los de otros usuarios.
     const visibles = soloVeSusPropiosMovimientos(sesion.rol)
       ? movimientos.filter((m) => m.usuarioId === sesion.usuarioId)
       : movimientos;
-    return NextResponse.json({ movimientos: visibles });
+    // El saldo de cada movimiento se calcula sobre el historial COMPLETO
+    // (no solo lo "visible"), para que un empleado pueda controlar el
+    // saldo real de su cuenta aunque no vea los movimientos ajenos que
+    // también la afectan.
+    const saldoPorMovimiento = calcularSaldoCuentaPorMovimiento(cuentas, movimientos);
+    const conSaldo = visibles.map((m) => ({
+      ...m,
+      saldoCuentaTrasMovimiento: saldoPorMovimiento.get(m.id) ?? 0,
+    }));
+    return NextResponse.json({ movimientos: conSaldo });
   } catch (err) {
     return manejarError(err);
   }

@@ -11,6 +11,13 @@ import {
 } from "@/lib/permisos";
 import type { Cuenta, Movimiento, Rol, SesionInterna, TipoMovimiento } from "@/lib/types";
 
+/** El movimiento que devuelve /api/movements viene con un extra: el saldo
+ *  de SU cuenta justo después de ese movimiento, calculado en el servidor
+ *  sobre el historial completo (aunque a un empleado no se le muestren los
+ *  movimientos ajenos que también afectan esa cuenta, igual puede
+ *  controlar su saldo real). */
+type MovimientoConSaldo = Movimiento & { saldoCuentaTrasMovimiento: number };
+
 interface UsuarioPublico {
   id: string;
   nombre: string;
@@ -124,7 +131,7 @@ function UsuariosRetiroCheckboxes({
 export default function MovimientosPage() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioPublico[]>([]);
-  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [movimientos, setMovimientos] = useState<MovimientoConSaldo[]>([]);
   const [sesion, setSesion] = useState<SesionInterna | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -567,8 +574,18 @@ export default function MovimientosPage() {
                     <td className="py-2 pr-4 text-right font-medium whitespace-nowrap">
                       {signo}
                       {formatMoney(m.monto, cuenta?.moneda ?? "ARS")}
-                      {sesion && puedeVerResumenGeneral(sesion.rol) && (() => {
-                        const saldo = saldoTotalTrasMovimiento.get(m.id) ?? 0;
+                      {(() => {
+                        // Admin y socio ven el saldo total de esa moneda
+                        // (sumando todas las cuentas); un empleado solo ve
+                        // el saldo de SU cuenta (la de este movimiento), ya
+                        // calculado en el servidor sobre el historial
+                        // completo, para poder controlarla sin que se le
+                        // muestren los movimientos ajenos que la afectan.
+                        const saldo =
+                          sesion && puedeVerResumenGeneral(sesion.rol)
+                            ? saldoTotalTrasMovimiento.get(m.id) ?? 0
+                            : m.saldoCuentaTrasMovimiento;
+                        if (saldo === undefined) return null;
                         return (
                           <div
                             className={`text-xs font-medium ${
