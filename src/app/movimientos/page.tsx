@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { formatFecha, formatFechaCorta, formatMoney, sinAcentos } from "@/lib/format";
 import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
-import { puedeRegistrarRetiros, soloPuedeRegistrarEgresos } from "@/lib/permisos";
+import {
+  puedeRegistrarRetiros,
+  puedeVerResumenGeneral,
+  soloPuedeRegistrarEgresos,
+} from "@/lib/permisos";
 import type { Cuenta, Movimiento, Rol, SesionInterna, TipoMovimiento } from "@/lib/types";
 
 interface UsuarioPublico {
@@ -563,7 +567,7 @@ export default function MovimientosPage() {
                     <td className="py-2 pr-4 text-right font-medium whitespace-nowrap">
                       {signo}
                       {formatMoney(m.monto, cuenta?.moneda ?? "ARS")}
-                      {(() => {
+                      {sesion && puedeVerResumenGeneral(sesion.rol) && (() => {
                         const saldo = saldoTotalTrasMovimiento.get(m.id) ?? 0;
                         return (
                           <div
