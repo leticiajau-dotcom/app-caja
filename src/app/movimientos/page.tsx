@@ -6,10 +6,19 @@ import MoneyInput from "@/components/MoneyInput";
 import RectificarModal from "@/components/RectificarModal";
 import {
   puedeRegistrarRetiros,
+  puedeVerClientes,
   puedeVerResumenGeneral,
   soloPuedeRegistrarEgresos,
 } from "@/lib/permisos";
-import type { Cuenta, Movimiento, Rol, SesionInterna, TipoMovimiento } from "@/lib/types";
+import type {
+  Cliente,
+  Cuenta,
+  Movimiento,
+  Proyecto,
+  Rol,
+  SesionInterna,
+  TipoMovimiento,
+} from "@/lib/types";
 
 /** El movimiento que devuelve /api/movements viene con un extra: el saldo
  *  de SU cuenta justo después de ese movimiento, calculado en el servidor
@@ -137,8 +146,17 @@ export default function MovimientosPage() {
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroCuentaId, setFiltroCuentaId] = useState("");
   const [descripcionAbierta, setDescripcionAbierta] = useState<string | null>(null);
   const [rectificando, setRectificando] = useState<Movimiento | null>(null);
+
+  // --- Imputar un egreso a un proyecto de Clientes (solo admin/socio) ---
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [imputandoId, setImputandoId] = useState<string | null>(null);
+  const [proyectoAImputar, setProyectoAImputar] = useState("");
+  const [guardandoImputacion, setGuardandoImputacion] = useState(false);
+  const [errorImputacion, setErrorImputacion] = useState("");
 
   const [fecha, setFecha] = useState(hoyISO());
   const [tipo, setTipo] = useState<TipoMovimiento>("ingreso");
@@ -176,6 +194,14 @@ export default function MovimientosPage() {
       );
       if (operables.length > 0) setCuentaId(operables[0].id);
     }
+    // Para armar la lista de proyectos a la hora de imputar un egreso: solo
+    // admin y socio tienen acceso a Clientes.
+    if (sesionActual && puedeVerClientes(sesionActual.rol)) {
+      const rcli = await fetch("/api/clients");
+      const dcli = await rcli.json();
+      setClientes(dcli.clientes ?? []);
+      setProyectos(dcli.proyectos ?? []);
+    }
     setCargando(false);
   }
 
@@ -189,6 +215,80 @@ export default function MovimientosPage() {
     cuentas.forEach((c) => m.set(c.id, c));
     return m;
   }, [cuentas]);
+
+  const clientesPorId = useMemo(() => {
+    const m = new Map<string, Cliente>();
+    clientes.forEach((c) => m.set(c.id, c));
+    return m;
+  }, [clientes]);
+
+  /** Proyectos para el selector de "Imputar", con el nombre del cliente ya
+   *  resuelto y ordenados por cliente y después por proyecto. */
+  const proyectosParaImputar = useMemo(
+    () =>
+      proyectos
+        .map((p) => ({
+          proyecto: p,
+          etiqueta: `${clientesPorId.get(p.clienteId)?.nombre ?? "?"} — ${p.nombre}`,
+        }))
+        .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta)),
+    [proyectos, clientesPorId]
+  );
+
+  function etiquetaProyecto(proyectoId: string) {
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
+    if (!proyecto) return "Proyecto eliminado";
+    return `${clientesPorId.get(proyecto.clienteId)?.nombre ?? "?"} — ${proyecto.nombre}`;
+  }
+
+  function empezarImputar(m: MovimientoConSaldo) {
+    setImputandoId(m.id);
+    setProyectoAImputar(m.proyectoImputadoId ?? "");
+    setErrorImputacion("");
+  }
+
+  async function guardarImputacion(movimientoId: string) {
+    setErrorImputacion("");
+    if (!proyectoAImputar) {
+      setErrorImputacion("Elegí un proyecto.");
+      return;
+    }
+    setGuardandoImputacion(true);
+    try {
+      const res = await fetch(`/api/movements/${movimientoId}/imputar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proyectoId: proyectoAImputar }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImputandoId(null);
+      await cargar();
+    } catch (e: any) {
+      setErrorImputacion(e.message ?? "Error inesperado.");
+    } finally {
+      setGuardandoImputacion(false);
+    }
+  }
+
+  async function quitarImputacion(movimientoId: string) {
+    setGuardandoImputacion(true);
+    try {
+      const res = await fetch(`/api/movements/${movimientoId}/imputar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proyectoId: null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImputandoId(null);
+      await cargar();
+    } catch (e: any) {
+      setErrorImputacion(e.message ?? "Error inesperado.");
+    } finally {
+      setGuardandoImputacion(false);
+    }
+  }
 
   /** Saldo total (sumando todas las cuentas activas de esa moneda) que queda
    *  justo después de cada movimiento — para poder ver, al lado de cada
@@ -308,22 +408,26 @@ export default function MovimientosPage() {
 
   // Sin acentos de los dos lados (20/10/2026, Leticia): "credito" encuentra "Crédito".
   const textoBusqueda = sinAcentos(busqueda.trim());
-  const movimientosFiltrados = textoBusqueda
-    ? movimientos.filter((m) => {
-        const cuenta = cuentasPorId.get(m.cuentaId);
-        const destino = m.cuentaDestinoId ? cuentasPorId.get(m.cuentaDestinoId) : null;
-        const campos = [
-          cuenta?.nombre,
-          destino?.nombre,
-          m.categoria,
-          m.descripcion,
-          m.tipo,
-          usuariosPorId.get(m.usuarioId),
-          m.usuarioRetiroId ? usuariosPorId.get(m.usuarioRetiroId) : undefined,
-        ];
-        return campos.some((c) => c && sinAcentos(c).includes(textoBusqueda));
-      })
-    : movimientos;
+  const movimientosFiltrados = movimientos
+    .filter((m) => !filtroCuentaId || m.cuentaId === filtroCuentaId)
+    .filter((m) => {
+      if (!textoBusqueda) return true;
+      const cuenta = cuentasPorId.get(m.cuentaId);
+      const destino = m.cuentaDestinoId ? cuentasPorId.get(m.cuentaDestinoId) : null;
+      const campos = [
+        cuenta?.nombre,
+        destino?.nombre,
+        m.categoria,
+        m.descripcion,
+        m.tipo,
+        usuariosPorId.get(m.usuarioId),
+        m.usuarioRetiroId ? usuariosPorId.get(m.usuarioRetiroId) : undefined,
+        // Para poder buscar por importe, ej: "1500" o "1.500,00".
+        String(m.monto),
+        m.monto.toLocaleString("es-AR", { minimumFractionDigits: 2 }),
+      ];
+      return campos.some((c) => c && sinAcentos(c).includes(textoBusqueda));
+    });
 
   return (
     <div className="space-y-8">
@@ -478,12 +582,26 @@ export default function MovimientosPage() {
       <div className="card overflow-x-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="font-semibold text-lg">Últimos movimientos</h2>
-          <input
-            className="input max-w-xs"
-            placeholder="Buscar por cuenta, categoría, descripción..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="input max-w-[11rem]"
+              value={filtroCuentaId}
+              onChange={(e) => setFiltroCuentaId(e.target.value)}
+            >
+              <option value="">Todas las cuentas</option>
+              {cuentas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre} ({c.moneda})
+                </option>
+              ))}
+            </select>
+            <input
+              className="input max-w-xs"
+              placeholder="Buscar por cuenta, categoría, descripción, importe..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
         </div>
         {cargando ? (
           <p className="text-madera-500 text-sm">Cargando...</p>
@@ -567,6 +685,78 @@ export default function MovimientosPage() {
                           Anulado{m.notaAnulacion ? `: ${m.notaAnulacion}` : ""}
                         </p>
                       )}
+                      {m.tipo === "egreso" &&
+                        !m.anulado &&
+                        sesion &&
+                        puedeVerClientes(sesion.rol) && (
+                          <div className="mt-1">
+                            {imputandoId === m.id ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <select
+                                  className="input py-1 text-xs max-w-[11rem]"
+                                  value={proyectoAImputar}
+                                  onChange={(e) => setProyectoAImputar(e.target.value)}
+                                >
+                                  <option value="" disabled>
+                                    Elegí un proyecto
+                                  </option>
+                                  {proyectosParaImputar.map(({ proyecto, etiqueta }) => (
+                                    <option key={proyecto.id} value={proyecto.id}>
+                                      {etiqueta}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="btn-primary py-1 px-2 text-xs"
+                                  disabled={guardandoImputacion}
+                                  onClick={() => guardarImputacion(m.id)}
+                                >
+                                  Guardar
+                                </button>
+                                {m.proyectoImputadoId && (
+                                  <button
+                                    type="button"
+                                    className="btn-secondary py-1 px-2 text-xs"
+                                    disabled={guardandoImputacion}
+                                    onClick={() => quitarImputacion(m.id)}
+                                  >
+                                    Quitar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="text-xs text-madera-500 hover:text-madera-700 underline"
+                                  onClick={() => setImputandoId(null)}
+                                >
+                                  Cancelar
+                                </button>
+                                {errorImputacion && (
+                                  <p className="text-xs text-red-600 w-full">
+                                    {errorImputacion}
+                                  </p>
+                                )}
+                              </div>
+                            ) : m.proyectoImputadoId ? (
+                              <button
+                                type="button"
+                                className="text-xs rounded-md border border-green-700 bg-green-50 text-green-700 px-2 py-1"
+                                onClick={() => empezarImputar(m)}
+                                title="Tocá para cambiar o quitar la imputación"
+                              >
+                                Imputado: {etiquetaProyecto(m.proyectoImputadoId)}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs rounded-md border border-madera-200 text-madera-600 px-2 py-1"
+                                onClick={() => empezarImputar(m)}
+                              >
+                                Imputar
+                              </button>
+                            )}
+                          </div>
+                        )}
                     </td>
                     <td className="py-2 pr-4">
                       {usuariosPorId.get(m.usuarioId) ?? "—"}

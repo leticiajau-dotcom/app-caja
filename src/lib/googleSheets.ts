@@ -117,6 +117,7 @@ export const HEADERS = {
     "movimientoOrigenId",
     "esAperturaSaldo",
     "usuarioRetiroId",
+    "proyectoImputadoId",
   ],
   [TABS.CONFIGURACION]: ["clave", "valor"],
   [TABS.CLIENTES]: ["id", "nombre", "creadoEn"],

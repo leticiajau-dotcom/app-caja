@@ -394,6 +394,7 @@ function rowToMovimiento(r: Record<string, string>): Movimiento {
     movimientoOrigenId: r.movimientoOrigenId || null,
     esAperturaSaldo: toBool(r.esAperturaSaldo),
     usuarioRetiroId: r.usuarioRetiroId || null,
+    proyectoImputadoId: r.proyectoImputadoId || null,
   };
 }
 
@@ -416,6 +417,7 @@ function movimientoAFila(m: Movimiento): (string | number)[] {
     m.movimientoOrigenId ?? "",
     String(m.esAperturaSaldo),
     m.usuarioRetiroId ?? "",
+    m.proyectoImputadoId ?? "",
   ];
 }
 
@@ -498,10 +500,38 @@ export async function crearMovimiento(datos: {
     movimientoOrigenId: datos.movimientoOrigenId ?? null,
     esAperturaSaldo: datos.esAperturaSaldo ?? false,
     usuarioRetiroId: datos.usuarioRetiroId ?? null,
+    proyectoImputadoId: null,
   };
   const tabDestino = await obtenerPestañaMovimientosParaEscribir();
   await agregarFila(tabDestino, movimientoAFila(movimiento));
   return movimiento;
+}
+
+/** Marca (o desmarca, pasando null) a qué proyecto de Clientes se imputó un
+ *  egreso ya cargado — pensado para "Caja chica" y cuentas similares a
+ *  cargo de un empleado, para poder llevar la cuenta de a qué obra fue cada
+ *  gasto. Solo admin y socio lo usan (ver permisos.ts); el empleado sigue
+ *  viendo Movimientos como siempre. */
+export async function imputarMovimiento(
+  movimientoId: string,
+  proyectoId: string | null
+): Promise<Movimiento> {
+  const encontrado = await buscarMovimientoPorId(movimientoId);
+  if (!encontrado) throw new Error("Movimiento no encontrado.");
+  const { movimiento, tab } = encontrado;
+  if (movimiento.tipo !== "egreso") {
+    throw new Error("Solo se puede imputar un egreso.");
+  }
+  if (proyectoId) {
+    const proyectos = await listarProyectos();
+    if (!proyectos.some((p) => p.id === proyectoId)) {
+      throw new Error("Proyecto no encontrado.");
+    }
+  }
+  await actualizarCeldasPorId(tab, movimientoId, "proyectoImputadoId", [
+    proyectoId ?? "",
+  ]);
+  return { ...movimiento, proyectoImputadoId: proyectoId };
 }
 
 /** Anula un movimiento (no lo borra: queda visible y auditado). No vuelve a

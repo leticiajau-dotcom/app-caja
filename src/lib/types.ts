@@ -68,6 +68,12 @@ export interface Movimiento {
    *  el historial para trazabilidad, pero no se vuelve a sumar al saldo
    *  (ese importe ya se cuenta a través de Cuenta.saldoInicial). */
   esAperturaSaldo: boolean;
+
+  /** Solo para egresos: a qué proyecto (de Clientes) se imputó este gasto,
+   *  si se marcó como tal. Null si no se imputó todavía. Solo admin y
+   *  socio pueden marcarlo (igual que el resto de "Clientes"); para el
+   *  empleado la lista de Movimientos sigue sin este marcador. */
+  proyectoImputadoId: string | null;
 }
 
 export interface SaldoCuenta {
