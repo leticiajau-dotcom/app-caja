@@ -19,6 +19,42 @@ export interface HojaCliente {
   total: number;
   validezDias: number;
   notaPie: string;
+  /** Encabezado de la columna principal de la tabla ("Mueble" por defecto;
+   *  "Descripción" en un presupuesto manual) y la etiqueta del subtotal de
+   *  arriba del total ("Muebles" por defecto; "Subtotal" en uno manual). */
+  etiquetaItems: string;
+  etiquetaSubtotal: string;
+}
+
+function armarHojaClienteManual(
+  p: Presupuesto,
+  cliente: Cliente | null,
+  defaults: DefaultsPresupuesto,
+  config: Configuracion | null
+): HojaCliente {
+  return {
+    nombreComercial: defaults.nombreComercial || config?.nombreApp || "",
+    logoDataUri: config?.logoDataUri ?? "",
+    fecha: p.creadoEn,
+    cliente: cliente?.nombre ?? "",
+    trabajo: p.nombre,
+    moneda: p.moneda,
+    porModulo: true,
+    items: p.lineasManuales.map((l) => ({
+      nombre: l.descripcion,
+      medidas: "",
+      cantidad: l.cantidad,
+      precioUnitario: l.precioUnitario,
+      subtotal: Math.round(l.cantidad * l.precioUnitario),
+    })),
+    muebles: p.total,
+    separados: [],
+    total: p.total,
+    validezDias: defaults.validezDias,
+    notaPie: defaults.notaPie,
+    etiquetaItems: "Descripción",
+    etiquetaSubtotal: "Subtotal",
+  };
 }
 
 export function armarHojaCliente(
@@ -27,6 +63,8 @@ export function armarHojaCliente(
   defaults: DefaultsPresupuesto,
   config: Configuracion | null
 ): HojaCliente {
+  if (p.tipo === "manual") return armarHojaClienteManual(p, cliente, defaults, config);
+
   const r = calcularPresupuesto(p.datos, p.coefPlacas, p.coefHerrajes);
   return {
     nombreComercial: defaults.nombreComercial || config?.nombreApp || "",
@@ -50,5 +88,7 @@ export function armarHojaCliente(
     total: r.total,
     validezDias: defaults.validezDias,
     notaPie: defaults.notaPie,
+    etiquetaItems: "Mueble",
+    etiquetaSubtotal: "Muebles",
   };
 }

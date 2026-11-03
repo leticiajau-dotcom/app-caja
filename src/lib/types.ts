@@ -1,6 +1,6 @@
 // Tipos de dominio para la app de control de caja.
 
-import type { DatosPresupuesto, TipoPrecio } from "./presupuesto";
+import type { DatosPresupuesto, LineaManual, TipoPrecio } from "./presupuesto";
 
 /** admin: gestiona cuentas/usuarios y opera como cualquier responsable.
  *  socio: mismos permisos que tenía "empleado" antes de este cambio —
@@ -273,6 +273,14 @@ export interface Presupuesto {
   vistoPrimero: string | null;
   vistoUltimo: string | null;
   vistas: number;
+  /** "manual": productos y servicios cargados a mano (texto, cantidad e
+   *  importe), sin archivo de LEBRON ni coeficientes — para lo que se hace
+   *  fuera de SketchUp. Los presupuestos de antes de esto no tienen este
+   *  campo en la planilla: se leen como "lebron". */
+  tipo: "lebron" | "manual";
+  /** Solo para tipo "manual": los renglones cargados a mano. Vacío en un
+   *  presupuesto "lebron". */
+  lineasManuales: LineaManual[];
 }
 
 /** Valores de entrada de un presupuesto nuevo (Configuración). */

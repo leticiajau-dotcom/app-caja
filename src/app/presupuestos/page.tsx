@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import MoneyInput from "@/components/MoneyInput";
 import { formatDiaYHora, formatMoney } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
-import { leerArchivoLebron, type ArchivoLebron } from "@/lib/presupuesto";
+import { leerArchivoLebron, type ArchivoLebron, type LineaManual } from "@/lib/presupuesto";
 import { ETIQUETA_ESTADO } from "@/lib/presupuestoEtiquetas";
 import type { Cliente, Presupuesto } from "@/lib/types";
 
-type FilaPresupuesto = Omit<Presupuesto, "datos"> & { muebles: number };
+type FilaPresupuesto = Omit<Presupuesto, "datos" | "lineasManuales"> & { muebles: number };
+
+const LINEA_MANUAL_VACIA: LineaManual = { descripcion: "", cantidad: 1, precioUnitario: 0 };
 
 const CLIENTE_NUEVO = "__nuevo__";
 
@@ -35,6 +38,15 @@ export default function PresupuestosPage() {
   const [creando, setCreando] = useState(false);
   const [mostrarSubir, setMostrarSubir] = useState(false);
   const [error, setError] = useState("");
+
+  // --- Nuevo presupuesto manual (productos y servicios fuera de SketchUp) ---
+  const [mostrarManual, setMostrarManual] = useState(false);
+  const [clienteSeleccionManual, setClienteSeleccionManual] = useState(CLIENTE_NUEVO);
+  const [clienteNuevoManual, setClienteNuevoManual] = useState("");
+  const [nombreManual, setNombreManual] = useState("");
+  const [lineasManual, setLineasManual] = useState<LineaManual[]>([{ ...LINEA_MANUAL_VACIA }]);
+  const [creandoManual, setCreandoManual] = useState(false);
+  const [errorManual, setErrorManual] = useState("");
 
   async function cargar() {
     setCargando(true);
@@ -103,6 +115,7 @@ export default function PresupuestosPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          modo: "lebron",
           clienteId: clienteSeleccion === CLIENTE_NUEVO ? undefined : clienteSeleccion,
           clienteNuevo: clienteSeleccion === CLIENTE_NUEVO ? clienteNuevo : undefined,
           nombre,
@@ -116,6 +129,49 @@ export default function PresupuestosPage() {
     } catch (err: any) {
       setError(err.message ?? "Error inesperado.");
       setCreando(false);
+    }
+  }
+
+  function cambiarLineaManual(i: number, cambio: Partial<LineaManual>) {
+    setLineasManual((ls) => ls.map((l, j) => (j === i ? { ...l, ...cambio } : l)));
+  }
+
+  function agregarLineaManual() {
+    setLineasManual((ls) => [...ls, { ...LINEA_MANUAL_VACIA }]);
+  }
+
+  function quitarLineaManual(i: number) {
+    setLineasManual((ls) => ls.filter((_, j) => j !== i));
+  }
+
+  async function crearManual(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorManual("");
+    const lineas = lineasManual.filter((l) => l.descripcion.trim());
+    if (lineas.length === 0) {
+      setErrorManual("Agregá al menos un ítem con descripción.");
+      return;
+    }
+    setCreandoManual(true);
+    try {
+      const res = await fetch("/api/presupuestos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modo: "manual",
+          clienteId: clienteSeleccionManual === CLIENTE_NUEVO ? undefined : clienteSeleccionManual,
+          clienteNuevo: clienteSeleccionManual === CLIENTE_NUEVO ? clienteNuevoManual : undefined,
+          nombre: nombreManual,
+          moneda: "ARS",
+          lineas,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      router.push(`/presupuestos/${data.presupuesto.id}`);
+    } catch (err: any) {
+      setErrorManual(err.message ?? "Error inesperado.");
+      setCreandoManual(false);
     }
   }
 
@@ -139,10 +195,127 @@ export default function PresupuestosPage() {
             obra, colocación y flete.
           </p>
         </div>
-        <Link href="/precios" className="btn-secondary">
-          Lista de precios
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setMostrarManual((v) => !v)}
+          >
+            {mostrarManual ? "Cancelar" : "+ Nuevo presupuesto"}
+          </button>
+          <Link href="/precios" className="btn-secondary">
+            Lista de precios
+          </Link>
+        </div>
       </div>
+
+      {mostrarManual && (
+        <div className="card">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h2 className="font-semibold text-lg">Nuevo presupuesto</h2>
+          </div>
+          <p className="text-xs text-madera-500 mb-4">
+            Para productos y servicios hechos fuera de SketchUp: un renglón por ítem, con texto, cantidad e
+            importe cargados a mano.
+          </p>
+          <form onSubmit={crearManual} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Cliente</label>
+                <select
+                  className="input"
+                  value={clienteSeleccionManual}
+                  onChange={(e) => setClienteSeleccionManual(e.target.value)}
+                >
+                  <option value={CLIENTE_NUEVO}>Cliente nuevo...</option>
+                  {clientesOrdenados.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+                {clienteSeleccionManual === CLIENTE_NUEVO && (
+                  <input
+                    className="input mt-2"
+                    placeholder="Nombre del cliente"
+                    value={clienteNuevoManual}
+                    onChange={(e) => setClienteNuevoManual(e.target.value)}
+                    required
+                  />
+                )}
+              </div>
+              <div>
+                <label className="label">Nombre del presupuesto</label>
+                <input
+                  className="input"
+                  value={nombreManual}
+                  onChange={(e) => setNombreManual(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-madera-500 px-1 mb-1">
+                <span className="col-span-6">Descripción</span>
+                <span className="col-span-2 text-right">Cantidad</span>
+                <span className="col-span-2 text-right">Precio unit.</span>
+                <span className="col-span-2 text-right">Subtotal</span>
+              </div>
+              <div className="space-y-2">
+                {lineasManual.map((l, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                    <input
+                      className="input col-span-12 sm:col-span-6"
+                      placeholder="Ej: Instalación eléctrica"
+                      value={l.descripcion}
+                      onChange={(e) => cambiarLineaManual(i, { descripcion: e.target.value })}
+                    />
+                    <input
+                      className="input col-span-4 sm:col-span-2 text-right"
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={l.cantidad}
+                      onChange={(e) => cambiarLineaManual(i, { cantidad: Number(e.target.value) || 0 })}
+                    />
+                    <MoneyInput
+                      className="input col-span-5 sm:col-span-2"
+                      value={l.precioUnitario}
+                      onChange={(v) => cambiarLineaManual(i, { precioUnitario: v })}
+                    />
+                    <div className="col-span-3 sm:col-span-2 flex items-center justify-end gap-2">
+                      <span className="text-sm">
+                        {formatMoney(l.cantidad * l.precioUnitario, "ARS")}
+                      </span>
+                      {lineasManual.length > 1 && (
+                        <button
+                          type="button"
+                          className="text-madera-400 hover:text-red-600 shrink-0"
+                          title="Quitar"
+                          onClick={() => quitarLineaManual(i)}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn-secondary text-sm py-1 mt-3" onClick={agregarLineaManual}>
+                + Agregar ítem
+              </button>
+            </div>
+
+            <div>
+              {errorManual && <p className="text-sm text-red-600 mb-2">{errorManual}</p>}
+              <button className="btn-primary" disabled={creandoManual}>
+                {creandoManual ? "Creando..." : "Crear presupuesto"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -176,7 +349,8 @@ export default function PresupuestosPage() {
                     </p>
                     <p className="text-xs text-madera-500">
                       {new Date(p.creadoEn).toLocaleDateString("es-AR")} · {p.muebles}{" "}
-                      {p.muebles === 1 ? "mueble" : "muebles"}
+                      {p.tipo === "manual" ? (p.muebles === 1 ? "ítem" : "ítems") : p.muebles === 1 ? "mueble" : "muebles"}
+                      {p.tipo === "manual" && <> · manual</>}
                       {p.vistoUltimo && <> · el cliente lo vio el {formatDiaYHora(p.vistoUltimo)}</>}
                     </p>
                   </div>

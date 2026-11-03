@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/MoneyInput";
+import PresupuestoManualDetalle from "@/components/PresupuestoManualDetalle";
 import TarjetaDiseno3D from "@/components/TarjetaDiseno3D";
 import { formatMoney, sinAcentos } from "@/lib/format";
 import { puedeVerPresupuestos } from "@/lib/permisos";
@@ -469,6 +470,12 @@ export default function PresupuestoPage({ params }: { params: { id: string } }) 
         </Link>
       </div>
     );
+  }
+
+  // Presupuesto manual (productos y servicios fuera de SketchUp, cargados a
+  // mano): pantalla propia, mucho más simple que la de LEBRON de acá abajo.
+  if (presupuesto.tipo === "manual") {
+    return <PresupuestoManualDetalle presupuesto={presupuesto} cliente={cliente} onActualizado={tomar} />;
   }
 
   const moneda = presupuesto.moneda;

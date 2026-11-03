@@ -46,7 +46,7 @@ export default function HojaPresupuesto({
       <table className="w-full text-sm mb-6">
         <thead>
           <tr className="border-b-2 border-madera-300 text-left">
-            <th className="py-2">Mueble</th>
+            <th className="py-2">{hoja.etiquetaItems}</th>
             <th className="py-2 text-right w-16">Cant.</th>
             {hoja.porModulo && <th className="py-2 text-right w-36">Precio unitario</th>}
             {hoja.porModulo && <th className="py-2 text-right w-36">Subtotal</th>}
@@ -69,7 +69,7 @@ export default function HojaPresupuesto({
 
       <div className="ml-auto max-w-xs text-sm space-y-1.5 mb-8">
         <div className="flex justify-between gap-4">
-          <span>Muebles</span>
+          <span>{hoja.etiquetaSubtotal}</span>
           <span>{formatMoney(hoja.muebles, moneda)}</span>
         </div>
         {hoja.separados.map((e, i) => (

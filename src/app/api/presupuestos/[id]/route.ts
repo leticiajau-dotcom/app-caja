@@ -4,6 +4,7 @@ import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerPresupuestos } from "@/lib/permisos";
 import {
   actualizarPresupuesto,
+  actualizarPresupuestoManual,
   listarClientes,
   obtenerDefaultsPresupuesto,
   obtenerPresupuesto,
@@ -47,6 +48,16 @@ const ActualizarSchema = z.object({
     .record(z.string(), z.object({ nombre: z.string().max(150).optional(), medidas: z.string().max(300).optional() }))
     .optional(),
   estado: z.enum(["borrador", "descartado"]).optional(),
+  // Solo para presupuestos manuales (ver actualizarPresupuestoManual).
+  lineas: z
+    .array(
+      z.object({
+        descripcion: z.string().min(1),
+        cantidad: z.number().gt(0),
+        precioUnitario: z.number().min(0),
+      })
+    )
+    .optional(),
 });
 
 async function sesionConPermiso() {
@@ -76,7 +87,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   try {
     const sesion = await sesionConPermiso();
     const cambios = ActualizarSchema.parse(await req.json());
-    const presupuesto = await actualizarPresupuesto(params.id, cambios, sesion.usuarioId);
+    const actual = await obtenerPresupuesto(params.id);
+    const presupuesto =
+      actual.tipo === "manual"
+        ? await actualizarPresupuestoManual(params.id, cambios)
+        : await actualizarPresupuesto(params.id, cambios, sesion.usuarioId);
     return NextResponse.json({ presupuesto });
   } catch (err) {
     return manejarError(err);

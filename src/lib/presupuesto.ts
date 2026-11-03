@@ -376,3 +376,62 @@ export function preciosParaArchivo(
   agregados.forEach((a) => tomar(a.tipo, a.nombre));
   return precios;
 }
+
+// ---------------------------------------------------------------------------
+// Presupuestos manuales (3/11/2026, Leticia): para productos y servicios
+// hechos fuera de SketchUp, un renglón por línea con texto, cantidad e
+// importe cargados a mano, sin pasar por el costo de materiales ni los
+// coeficientes de arriba.
+// ---------------------------------------------------------------------------
+
+export interface LineaManual {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+}
+
+/** El "archivo" vacío que llevan los presupuestos manuales, para no tener
+ *  que aflojar el tipado de Presupuesto.datos en el resto de la app: nunca
+ *  se usa su contenido (ver armarHojaCliente y aceptarPresupuesto, que para
+ *  un presupuesto manual no llaman a calcularPresupuesto). */
+export function datosVaciosPresupuesto(): DatosPresupuesto {
+  return {
+    archivo: {
+      formato: FORMATO_ARCHIVO_LEBRON,
+      version: 1,
+      cliente: "",
+      generado: "",
+      placas_optimizadas: true,
+      placas: [],
+      canto: [],
+      herrajes: [],
+      items: [],
+      avisos: [],
+    },
+    precios: {},
+    extras: [],
+    descuento: 0,
+  };
+}
+
+/** Limpia y valida las líneas de un presupuesto manual: descarta las que
+ *  quedaron sin descripción (renglón vacío al editar) y valida el resto. */
+export function limpiarLineasManuales(lineas: LineaManual[]): LineaManual[] {
+  const limpias: LineaManual[] = [];
+  for (const l of lineas) {
+    const descripcion = l.descripcion.trim();
+    if (!descripcion) continue;
+    if (!(l.cantidad > 0)) {
+      throw new Error(`La cantidad de "${descripcion}" tiene que ser mayor a 0.`);
+    }
+    if (!(l.precioUnitario >= 0)) {
+      throw new Error(`El importe de "${descripcion}" no puede ser negativo.`);
+    }
+    limpias.push({ descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario });
+  }
+  return limpias;
+}
+
+export function totalLineasManuales(lineas: LineaManual[]): number {
+  return redondear(lineas.reduce((acc, l) => acc + l.cantidad * l.precioUnitario, 0));
+}

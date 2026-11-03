@@ -184,6 +184,10 @@ export const HEADERS = {
     "vistoPrimero",
     "vistoUltimo",
     "vistas",
+    // Presupuestos manuales (3/11/2026): productos y servicios cargados a
+    // mano, sin archivo de LEBRON. Al final, para no tocar columnas viejas.
+    "tipo",
+    "lineasManuales",
   ],
   [TABS.EMPLEADOS]: ["id", "nombre", "activo", "creadoEn"],
 } as const;

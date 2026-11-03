@@ -43,13 +43,17 @@ import {
   EXTRAS_INICIALES,
   calcularPresupuesto,
   clavePrecio,
+  datosVaciosPresupuesto,
+  limpiarLineasManuales,
   preciosParaArchivo,
+  totalLineasManuales,
   type ArchivoLebron,
   type ArticuloAgregado,
   type CambioMaterial,
   type CambioMueble,
   type DatosPresupuesto,
   type Extra,
+  type LineaManual,
   type TipoPrecio,
 } from "./presupuesto";
 
@@ -1263,6 +1267,14 @@ function rowToPresupuesto(r: Record<string, string>): Presupuesto {
   } catch {
     throw new Error(`El presupuesto ${r.id} tiene los datos dañados en la planilla.`);
   }
+  let lineasManuales: LineaManual[] = [];
+  if (r.lineasManuales) {
+    try {
+      lineasManuales = JSON.parse(r.lineasManuales);
+    } catch {
+      lineasManuales = [];
+    }
+  }
   return {
     id: r.id,
     clienteId: r.clienteId,
@@ -1283,6 +1295,9 @@ function rowToPresupuesto(r: Record<string, string>): Presupuesto {
     vistoPrimero: r.vistoPrimero || null,
     vistoUltimo: r.vistoUltimo || null,
     vistas: toNum(r.vistas),
+    // Los presupuestos de antes de esto no tienen esta columna: "lebron".
+    tipo: r.tipo === "manual" ? "manual" : "lebron",
+    lineasManuales,
   };
 }
 
@@ -1307,6 +1322,8 @@ function filaPresupuesto(p: Presupuesto): (string | number)[] {
     p.vistoPrimero ?? "",
     p.vistoUltimo ?? "",
     p.vistas,
+    p.tipo,
+    JSON.stringify(p.lineasManuales),
   ];
 }
 
@@ -1468,9 +1485,96 @@ export async function crearPresupuesto(datos: {
     vistoPrimero: null,
     vistoUltimo: null,
     vistas: 0,
+    tipo: "lebron",
+    lineasManuales: [],
   };
   await agregarFila(TABS.PRESUPUESTOS, filaPresupuesto(presupuesto));
   return presupuesto;
+}
+
+/** Presupuesto manual: productos y servicios hechos fuera de SketchUp,
+ *  cargados renglón por renglón (texto, cantidad e importe) sin archivo de
+ *  LEBRON ni coeficientes. El token público se genera de entrada (a
+ *  diferencia de un presupuesto de LEBRON, que lo recibe recién al subir el
+ *  diseño en 3D) para poder mandarle el link al cliente desde el principio. */
+export async function crearPresupuestoManual(datos: {
+  clienteId?: string;
+  clienteNuevo?: string;
+  nombre: string;
+  moneda: string;
+  lineas: LineaManual[];
+  usuarioId: string;
+}): Promise<Presupuesto> {
+  const nombre = datos.nombre.trim();
+  if (!nombre) throw new Error("Ingresá un nombre para el presupuesto.");
+  let clienteId = datos.clienteId;
+  if (clienteId) {
+    if (!(await listarClientes()).some((c) => c.id === clienteId)) {
+      throw new Error("Cliente no encontrado.");
+    }
+  } else {
+    clienteId = (await clientePorNombre(datos.clienteNuevo ?? "")).id;
+  }
+  const lineas = limpiarLineasManuales(datos.lineas);
+  if (lineas.length === 0) throw new Error("Agregá al menos un ítem.");
+
+  const ahora = new Date().toISOString();
+  const presupuesto: Presupuesto = {
+    id: randomUUID(),
+    clienteId,
+    nombre,
+    estado: "borrador",
+    moneda: datos.moneda.trim().toUpperCase() || "ARS",
+    coefPlacas: 1,
+    coefHerrajes: 1,
+    porModulo: true,
+    datos: datosVaciosPresupuesto(),
+    total: totalLineasManuales(lineas),
+    proyectoId: null,
+    usuarioId: datos.usuarioId,
+    creadoEn: ahora,
+    actualizadoEn: ahora,
+    tokenPublico: randomBytes(18).toString("base64url"),
+    modeloId: null,
+    vistoPrimero: null,
+    vistoUltimo: null,
+    vistas: 0,
+    tipo: "manual",
+    lineasManuales: lineas,
+  };
+  await agregarFila(TABS.PRESUPUESTOS, filaPresupuesto(presupuesto));
+  return presupuesto;
+}
+
+export async function actualizarPresupuestoManual(
+  id: string,
+  cambios: {
+    nombre?: string;
+    estado?: "borrador" | "descartado";
+    lineas?: LineaManual[];
+  }
+): Promise<Presupuesto> {
+  const p = await obtenerPresupuesto(id);
+  if (p.estado === "aceptado") {
+    throw new Error(
+      "Este presupuesto ya es un proyecto. Los cambios se cargan como Modificación, en Clientes."
+    );
+  }
+  if (cambios.nombre !== undefined) {
+    if (!cambios.nombre.trim()) throw new Error("El presupuesto necesita un nombre.");
+    p.nombre = cambios.nombre.trim();
+  }
+  if (cambios.lineas !== undefined) {
+    const lineas = limpiarLineasManuales(cambios.lineas);
+    if (lineas.length === 0) throw new Error("Agregá al menos un ítem.");
+    p.lineasManuales = lineas;
+  }
+  if (cambios.estado !== undefined) p.estado = cambios.estado;
+
+  p.total = totalLineasManuales(p.lineasManuales);
+  p.actualizadoEn = new Date().toISOString();
+  await actualizarFilaPorId(TABS.PRESUPUESTOS, p.id, filaPresupuesto(p));
+  return p;
 }
 
 export async function actualizarPresupuesto(
@@ -1610,12 +1714,14 @@ export async function aceptarPresupuesto(
       p.estado === "aceptado" ? "Este presupuesto ya fue aceptado." : "Este presupuesto está descartado."
     );
   }
-  const total = calcularPresupuesto(p.datos, p.coefPlacas, p.coefHerrajes).total;
+  const total =
+    p.tipo === "manual" ? p.total : calcularPresupuesto(p.datos, p.coefPlacas, p.coefHerrajes).total;
   if (!(total > 0)) throw new Error("El total tiene que ser mayor a 0: cargá los precios.");
   const fecha = new Date(p.creadoEn).toLocaleDateString("es-AR");
   const proyecto = await agregarProyecto(p.clienteId, {
     nombre: p.nombre,
-    descripcion: `Presupuesto del ${fecha} (diseño de LEBRON)`,
+    descripcion:
+      p.tipo === "manual" ? `Presupuesto del ${fecha}` : `Presupuesto del ${fecha} (diseño de LEBRON)`,
     moneda: p.moneda,
     precio: total,
   });
