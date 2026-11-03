@@ -274,9 +274,10 @@ export default function PresupuestoManualDetalle({
             <span className="col-span-2 text-right">Subtotal</span>
           </div>
           {lineas.map((l, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center">
-              <input
-                className="input col-span-12 sm:col-span-6"
+            <div key={i} className="grid grid-cols-12 gap-2 items-start">
+              <textarea
+                className="input col-span-12 sm:col-span-6 resize-y"
+                rows={1}
                 placeholder="Ej: Instalación eléctrica"
                 value={l.descripcion}
                 disabled={!editable}

@@ -56,7 +56,7 @@ export default function HojaPresupuesto({
           {hoja.items.map((it, i) => (
             <tr key={i} className="border-b border-madera-100 align-top">
               <td className="py-2">
-                <p className="font-medium">{it.nombre}</p>
+                <p className="font-medium whitespace-pre-line">{it.nombre}</p>
                 {it.medidas && <p className="text-xs text-madera-500">{it.medidas}</p>}
               </td>
               <td className="py-2 text-right">{it.cantidad}</td>
