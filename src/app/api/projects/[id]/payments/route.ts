@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, manejarError, requerirSesion } from "@/lib/guards";
 import { puedeVerClientes } from "@/lib/permisos";
-import { agregarPago, agregarPagoHistorico, vincularPago } from "@/lib/repo";
+import {
+  agregarPago,
+  agregarPagoHistorico,
+  usuarioPuedeOperarCuenta,
+  vincularPago,
+} from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +32,10 @@ const PagoSchema = z.union([
 
 // Admin y socio pueden registrar un pago del cliente contra un proyecto:
 // "nuevo" crea además un ingreso real en la cuenta elegida (ver
-// agregarPago); "vincular" asocia un ingreso que ya existía en
-// Movimientos, sin crear uno nuevo (para no duplicar pagos cargados antes
-// de tener esta pantalla).
+// agregarPago) — igual que en Movimientos, solo en una cuenta de la que
+// quien carga el pago es responsable; "vincular" asocia un ingreso que ya
+// existía en Movimientos, sin crear uno nuevo (para no duplicar pagos
+// cargados antes de tener esta pantalla).
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
@@ -41,6 +47,15 @@ export async function POST(
     }
     const body = await req.json();
     const datos = PagoSchema.parse(body);
+    if (
+      datos.modo === "nuevo" &&
+      !(await usuarioPuedeOperarCuenta(sesion, datos.cuentaId))
+    ) {
+      throw new ApiError(
+        "No podés cargar pagos en una cuenta de la que no sos responsable.",
+        403
+      );
+    }
     const resultado =
       datos.modo === "nuevo"
         ? await agregarPago(params.id, { ...datos, usuarioId: sesion.usuarioId })

@@ -13,6 +13,7 @@ import type {
   Pago,
   Proyecto,
   ResumenProyecto,
+  SesionInterna,
 } from "@/lib/types";
 
 const MONEDA_OTRA = "__otra__";
@@ -78,6 +79,7 @@ export default function ClientesPage() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [cargando, setCargando] = useState(true);
   const [sinPermiso, setSinPermiso] = useState(false);
+  const [sesion, setSesion] = useState<SesionInterna | null>(null);
 
   // --- Nuevo cliente ---
   const [nombre, setNombre] = useState("");
@@ -153,6 +155,7 @@ export default function ClientesPage() {
     setCuentas(da.cuentas ?? []);
     setMovimientos(dm.movimientos ?? []);
     setSinPermiso(ds.sesion ? !puedeVerClientes(ds.sesion.rol) : false);
+    setSesion(ds.sesion ?? null);
     setCargando(false);
   }
 
@@ -500,8 +503,15 @@ export default function ClientesPage() {
                       const expandido = expandidos.has(p.id);
                       const susMods = modificacionesPorProyecto.get(p.id) ?? [];
                       const susPagos = pagosPorProyecto.get(p.id) ?? [];
+                      // Para cargar un pago hay que ser responsable de la cuenta
+                      // elegida (misma regla que en Movimientos: incluso el
+                      // admin solo opera las cuentas de las que es responsable).
                       const cuentasValidas = cuentas.filter(
-                        (cu) => cu.moneda === p.moneda && cu.activa
+                        (cu) =>
+                          cu.moneda === p.moneda &&
+                          cu.activa &&
+                          sesion &&
+                          cu.usuarioResponsablesIds.includes(sesion.usuarioId)
                       );
 
                       return (
@@ -756,9 +766,10 @@ export default function ClientesPage() {
                                         />
                                         {cuentasValidas.length === 0 && (
                                           <p className="text-xs text-amber-700 sm:col-span-3">
-                                            No hay cuentas activas en {p.moneda}. Creá
-                                            una en "Cuentas" para poder registrar el
-                                            pago.
+                                            No sos responsable de ninguna cuenta
+                                            activa en {p.moneda}. Pedile a un
+                                            administrador que te asigne una en
+                                            "Cuentas" para poder registrar el pago.
                                           </p>
                                         )}
                                       </div>
