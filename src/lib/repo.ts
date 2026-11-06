@@ -553,6 +553,31 @@ export async function imputarMovimiento(
   return { ...movimiento, proyectoImputadoId: proyectoId };
 }
 
+/** Marca (o desmarca, pasando null) a qué empleado corresponde un egreso ya
+ *  cargado, como pago de sueldo — para los pagos que se cargaron antes de
+ *  que existiera la opción "Es un pago de sueldo" en Nuevo movimiento, y
+ *  quedaron sin esta marca. No toca la categoría ni ningún otro dato del
+ *  movimiento original. */
+export async function imputarMovimientoEmpleado(
+  movimientoId: string,
+  empleadoId: string | null
+): Promise<Movimiento> {
+  const encontrado = await buscarMovimientoPorId(movimientoId);
+  if (!encontrado) throw new Error("Movimiento no encontrado.");
+  const { movimiento, tab } = encontrado;
+  if (movimiento.tipo !== "egreso") {
+    throw new Error("Solo se puede imputar un egreso.");
+  }
+  if (empleadoId) {
+    const empleados = await listarEmpleados();
+    if (!empleados.some((e) => e.id === empleadoId)) {
+      throw new Error("Empleado no encontrado.");
+    }
+  }
+  await actualizarCeldasPorId(tab, movimientoId, "empleadoId", [empleadoId ?? ""]);
+  return { ...movimiento, empleadoId };
+}
+
 /** Anula un movimiento (no lo borra: queda visible y auditado). No vuelve a
  *  contarse en los saldos ni en el arqueo a partir de este momento. El
  *  control de permisos (quién puede anular qué) se hace en la capa de API. */

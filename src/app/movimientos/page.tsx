@@ -160,6 +160,13 @@ export default function MovimientosPage() {
   const [guardandoImputacion, setGuardandoImputacion] = useState(false);
   const [errorImputacion, setErrorImputacion] = useState("");
 
+  // --- Marcar un egreso viejo como pago de sueldo (los que se cargaron
+  // antes de que existiera "Es un pago de sueldo" en Nuevo movimiento) ---
+  const [imputandoEmpleadoId, setImputandoEmpleadoId] = useState<string | null>(null);
+  const [empleadoAImputar, setEmpleadoAImputar] = useState("");
+  const [guardandoImputacionEmpleado, setGuardandoImputacionEmpleado] = useState(false);
+  const [errorImputacionEmpleado, setErrorImputacionEmpleado] = useState("");
+
   const [fecha, setFecha] = useState(hoyISO());
   const [tipo, setTipo] = useState<TipoMovimiento>("ingreso");
   const [cuentaId, setCuentaId] = useState("");
@@ -252,6 +259,10 @@ export default function MovimientosPage() {
     return `${clientesPorId.get(proyecto.clienteId)?.nombre ?? "?"} — ${proyecto.nombre}`;
   }
 
+  function etiquetaEmpleado(empleadoId: string) {
+    return empleados.find((e) => e.id === empleadoId)?.nombre ?? "Empleado eliminado";
+  }
+
   function empezarImputar(m: MovimientoConSaldo) {
     setImputandoId(m.id);
     setProyectoAImputar(m.proyectoImputadoId ?? "");
@@ -298,6 +309,55 @@ export default function MovimientosPage() {
       setErrorImputacion(e.message ?? "Error inesperado.");
     } finally {
       setGuardandoImputacion(false);
+    }
+  }
+
+  function empezarImputarEmpleado(m: MovimientoConSaldo) {
+    setImputandoEmpleadoId(m.id);
+    setEmpleadoAImputar(m.empleadoId ?? "");
+    setErrorImputacionEmpleado("");
+  }
+
+  async function guardarImputacionEmpleado(movimientoId: string) {
+    setErrorImputacionEmpleado("");
+    if (!empleadoAImputar) {
+      setErrorImputacionEmpleado("Elegí un empleado.");
+      return;
+    }
+    setGuardandoImputacionEmpleado(true);
+    try {
+      const res = await fetch(`/api/movements/${movimientoId}/imputar-empleado`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ empleadoId: empleadoAImputar }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImputandoEmpleadoId(null);
+      await cargar();
+    } catch (e: any) {
+      setErrorImputacionEmpleado(e.message ?? "Error inesperado.");
+    } finally {
+      setGuardandoImputacionEmpleado(false);
+    }
+  }
+
+  async function quitarImputacionEmpleado(movimientoId: string) {
+    setGuardandoImputacionEmpleado(true);
+    try {
+      const res = await fetch(`/api/movements/${movimientoId}/imputar-empleado`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ empleadoId: null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImputandoEmpleadoId(null);
+      await cargar();
+    } catch (e: any) {
+      setErrorImputacionEmpleado(e.message ?? "Error inesperado.");
+    } finally {
+      setGuardandoImputacionEmpleado(false);
     }
   }
 
@@ -812,6 +872,79 @@ export default function MovimientosPage() {
                                 onClick={() => empezarImputar(m)}
                               >
                                 Imputar
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      {m.tipo === "egreso" &&
+                        !m.anulado &&
+                        sesion &&
+                        puedeVerEmpleados(sesion.rol) &&
+                        empleados.length > 0 && (
+                          <div className="mt-1">
+                            {imputandoEmpleadoId === m.id ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <select
+                                  className="input py-1 text-xs max-w-[11rem]"
+                                  value={empleadoAImputar}
+                                  onChange={(e) => setEmpleadoAImputar(e.target.value)}
+                                >
+                                  <option value="" disabled>
+                                    Elegí un empleado
+                                  </option>
+                                  {empleados.map((emp) => (
+                                    <option key={emp.id} value={emp.id}>
+                                      {emp.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="btn-primary py-1 px-2 text-xs"
+                                  disabled={guardandoImputacionEmpleado}
+                                  onClick={() => guardarImputacionEmpleado(m.id)}
+                                >
+                                  Guardar
+                                </button>
+                                {m.empleadoId && (
+                                  <button
+                                    type="button"
+                                    className="btn-secondary py-1 px-2 text-xs"
+                                    disabled={guardandoImputacionEmpleado}
+                                    onClick={() => quitarImputacionEmpleado(m.id)}
+                                  >
+                                    Quitar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="text-xs text-madera-500 hover:text-madera-700 underline"
+                                  onClick={() => setImputandoEmpleadoId(null)}
+                                >
+                                  Cancelar
+                                </button>
+                                {errorImputacionEmpleado && (
+                                  <p className="text-xs text-red-600 w-full">
+                                    {errorImputacionEmpleado}
+                                  </p>
+                                )}
+                              </div>
+                            ) : m.empleadoId ? (
+                              <button
+                                type="button"
+                                className="text-xs rounded-md border border-green-700 bg-green-50 text-green-700 px-2 py-1"
+                                onClick={() => empezarImputarEmpleado(m)}
+                                title="Tocá para cambiar o quitar la marca de sueldo"
+                              >
+                                Sueldo: {etiquetaEmpleado(m.empleadoId)}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs rounded-md border border-madera-200 text-madera-600 px-2 py-1"
+                                onClick={() => empezarImputarEmpleado(m)}
+                              >
+                                Marcar como sueldo
                               </button>
                             )}
                           </div>
