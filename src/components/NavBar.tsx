@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Configuracion, SesionInterna } from "@/lib/types";
+import { formatDiaYHora } from "@/lib/format";
 import ConfiguracionModal from "./ConfiguracionModal";
 import MobileBottomNav from "./MobileBottomNav";
 import {
@@ -37,6 +38,9 @@ export default function NavBar() {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [presionando, setPresionando] = useState(false);
   const [toastMobile, setToastMobile] = useState<string | null>(null);
+  const [alertas, setAlertas] = useState<
+    { usuarioId: string; nombre: string; alertaEn: string; racha: number }[]
+  >([]);
   const temporizadorRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathname = usePathname();
@@ -55,6 +59,24 @@ export default function NavBar() {
       .then((d) => setConfig(d.config ?? null))
       .catch(() => setConfig(null));
   }, []);
+
+  // Aviso de seguridad (10 intentos de PIN fallidos seguidos contra un
+  // mismo usuario): solo el admin lo ve, en cualquier pantalla.
+  useEffect(() => {
+    if (sesion?.rol !== "admin") {
+      setAlertas([]);
+      return;
+    }
+    fetch("/api/users/alerts")
+      .then((r) => r.json())
+      .then((d) => setAlertas(d.alertas ?? []))
+      .catch(() => setAlertas([]));
+  }, [sesion, pathname]);
+
+  async function descartarAlerta(usuarioId: string) {
+    setAlertas((a) => a.filter((al) => al.usuarioId !== usuarioId));
+    await fetch(`/api/users/${usuarioId}/descartar-alerta`, { method: "POST" }).catch(() => {});
+  }
 
   if (!sesion || pathname === "/login" || pathname === "/conectar") {
     return null;
@@ -235,6 +257,29 @@ export default function NavBar() {
           </button>
         </div>
       </header>
+
+      {alertas.length > 0 && (
+        <div className="max-w-5xl mx-auto px-4 pt-3 space-y-2 print:hidden">
+          {alertas.map((a) => (
+            <div
+              key={a.usuarioId}
+              className="rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+            >
+              <span>
+                ⚠ El usuario <strong>{a.nombre}</strong> tuvo {a.racha} intentos
+                de inicio de sesión fallidos seguidos (el último, el{" "}
+                {formatDiaYHora(a.alertaEn)}).
+              </span>
+              <button
+                className="text-xs underline shrink-0"
+                onClick={() => descartarAlerta(a.usuarioId)}
+              >
+                Descartar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {sesion && <MobileBottomNav sesion={sesion} pathname={pathname} />}
 

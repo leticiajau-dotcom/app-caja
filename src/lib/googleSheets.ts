@@ -88,6 +88,10 @@ export const HEADERS = {
     "creadoEn",
     "intentosFallidos",
     "bloqueadoHasta",
+    // Aviso de 10 intentos fallidos seguidos (6/11/2026). Al final, para no
+    // tocar las columnas existentes.
+    "rachaIntentosFallidos",
+    "alertaIntentosFallidos",
   ],
   [TABS.CUENTAS]: [
     "id",

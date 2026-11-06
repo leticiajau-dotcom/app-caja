@@ -20,6 +20,16 @@ export interface Usuario {
   creadoEn: string;
   intentosFallidos: number;
   bloqueadoHasta: string | null;
+  /** Racha de intentos fallidos seguidos, sin reiniciarse cuando se bloquea
+   *  al usuario (a diferencia de intentosFallidos): sirve para avisarle al
+   *  admin si alguien insiste contra un mismo usuario a lo largo de varios
+   *  bloqueos. Se reinicia a 0 en el primer PIN correcto. */
+  rachaIntentosFallidos: number;
+  /** Cuándo se llegó a 10 intentos fallidos seguidos (o un múltiplo de 10
+   *  si el ataque sigue), para mostrarle un aviso al admin. Null si no hay
+   *  ningún aviso pendiente (se descarta a mano, o se borra solo si el
+   *  usuario acierta el PIN). */
+  alertaIntentosFallidos: string | null;
 }
 
 export interface Cuenta {

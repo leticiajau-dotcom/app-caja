@@ -80,6 +80,8 @@ function rowToUsuario(r: Record<string, string>): Usuario {
     creadoEn: r.creadoEn,
     intentosFallidos: toNum(r.intentosFallidos),
     bloqueadoHasta: r.bloqueadoHasta || null,
+    rachaIntentosFallidos: toNum(r.rachaIntentosFallidos),
+    alertaIntentosFallidos: r.alertaIntentosFallidos || null,
   };
 }
 
@@ -87,6 +89,10 @@ function rowToUsuario(r: Record<string, string>): Usuario {
 // usuario, y minutos que dura el bloqueo una vez alcanzado ese límite.
 const MAX_INTENTOS_FALLIDOS = 3;
 const MINUTOS_BLOQUEO = 15;
+// A partir de qué racha de intentos fallidos SEGUIDOS (sin acertar nunca el
+// PIN en el medio, aunque se vaya bloqueando cada tanto) se le avisa al
+// admin — y cada cuántos más, si el que insiste no para.
+const RACHA_PARA_AVISO = 10;
 
 function filaUsuario(u: Usuario): string[] {
   return [
@@ -98,6 +104,8 @@ function filaUsuario(u: Usuario): string[] {
     u.creadoEn,
     String(u.intentosFallidos),
     u.bloqueadoHasta ?? "",
+    String(u.rachaIntentosFallidos),
+    u.alertaIntentosFallidos ?? "",
   ];
 }
 
@@ -167,6 +175,8 @@ export async function crearUsuario(datos: {
     creadoEn: new Date().toISOString(),
     intentosFallidos: 0,
     bloqueadoHasta: null,
+    rachaIntentosFallidos: 0,
+    alertaIntentosFallidos: null,
   };
   await agregarFila(TABS.USUARIOS, filaUsuario(usuario));
   return usuario;
@@ -214,11 +224,18 @@ export async function verificarPin(nombre: string, pin: string) {
   const ok = bcrypt.compareSync(pin, usuario.pinHash);
 
   if (ok) {
-    if (usuario.intentosFallidos > 0 || usuario.bloqueadoHasta) {
+    if (
+      usuario.intentosFallidos > 0 ||
+      usuario.bloqueadoHasta ||
+      usuario.rachaIntentosFallidos > 0 ||
+      usuario.alertaIntentosFallidos
+    ) {
       const actualizado: Usuario = {
         ...usuario,
         intentosFallidos: 0,
         bloqueadoHasta: null,
+        rachaIntentosFallidos: 0,
+        alertaIntentosFallidos: null,
       };
       await actualizarFilaPorId(TABS.USUARIOS, usuario.id, filaUsuario(actualizado));
       return actualizado;
@@ -228,12 +245,22 @@ export async function verificarPin(nombre: string, pin: string) {
 
   const intentosFallidos = usuario.intentosFallidos + 1;
   const seBloquea = intentosFallidos >= MAX_INTENTOS_FALLIDOS;
+  // A diferencia de intentosFallidos (que se reinicia en cada bloqueo), esta
+  // racha sigue sumando mientras no se acierte el PIN ni una vez — así se
+  // puede avisar si alguien insiste contra el mismo usuario a lo largo de
+  // varios bloqueos de 15 minutos.
+  const rachaIntentosFallidos = usuario.rachaIntentosFallidos + 1;
   const actualizado: Usuario = {
     ...usuario,
     intentosFallidos: seBloquea ? 0 : intentosFallidos,
     bloqueadoHasta: seBloquea
       ? new Date(Date.now() + MINUTOS_BLOQUEO * 60000).toISOString()
       : null,
+    rachaIntentosFallidos,
+    alertaIntentosFallidos:
+      rachaIntentosFallidos >= RACHA_PARA_AVISO && rachaIntentosFallidos % RACHA_PARA_AVISO === 0
+        ? new Date().toISOString()
+        : usuario.alertaIntentosFallidos,
   };
   await actualizarFilaPorId(TABS.USUARIOS, usuario.id, filaUsuario(actualizado));
 
@@ -245,6 +272,35 @@ export async function verificarPin(nombre: string, pin: string) {
   }
 
   return null;
+}
+
+/** Usuarios con un aviso de 10 (o más, de a 10) intentos fallidos seguidos
+ *  pendiente de revisar. */
+export async function listarAlertasIntentosFallidos(): Promise<
+  { usuarioId: string; nombre: string; alertaEn: string; racha: number }[]
+> {
+  const usuarios = await listarUsuarios();
+  return usuarios
+    .filter((u) => u.alertaIntentosFallidos)
+    .map((u) => ({
+      usuarioId: u.id,
+      nombre: u.nombre,
+      alertaEn: u.alertaIntentosFallidos!,
+      racha: u.rachaIntentosFallidos,
+    }))
+    .sort((a, b) => (a.alertaEn < b.alertaEn ? 1 : -1));
+}
+
+/** Descarta el aviso de intentos fallidos de un usuario (no reinicia la
+ *  racha: si el que insiste sigue fallando, se vuelve a avisar en el
+ *  próximo múltiplo de 10). */
+export async function descartarAlertaIntentosFallidos(usuarioId: string): Promise<Usuario> {
+  const usuarios = await listarUsuarios();
+  const usuario = usuarios.find((u) => u.id === usuarioId);
+  if (!usuario) throw new ApiError("Usuario no encontrado.", 404);
+  const actualizado: Usuario = { ...usuario, alertaIntentosFallidos: null };
+  await actualizarFilaPorId(TABS.USUARIOS, usuario.id, filaUsuario(actualizado));
+  return actualizado;
 }
 
 // ---------------------------------------------------------------------------
